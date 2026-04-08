@@ -67,6 +67,10 @@ rm -f ~/klipper/klippy/extras/bed_mesh.py*
 ln -sf ${SCRIPT_DIR}/patches/bed_mesh.py ~/klipper/klippy/extras/bed_mesh.py
 sed -i 's/self\.use_offsets = False/self.use_offsets = True/g' ~/klipper/klippy/extras/probe.py || true
 
+# install toggle script
+mkdir -p /mnt/UDISK/bin
+ln -sf ${SCRIPT_DIR}/cartographer.sh /mnt/UDISK/bin/cartographer.sh
+
 # register for updates
 if [ -f ~/printer_data/config/moonraker.conf ]; then
     echo "I: registering cartographer update manager"
