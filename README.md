@@ -14,6 +14,10 @@
 > **Interesting finding during the rebase:** Creality's 1.1.5.2 changes to `mcu.py` trsync-tag handling move in the **same direction** as this project's patches (both add `& 0xffffffff` masking to `state_tag`). `clocksync.py` is byte-identical across 1.1.3.13 / 1.1.4.x / 1.1.5.2 — not where the "timing issue" lives.
 >
 > **Caveat:** the `.so` blobs Creality ships (`box_wrapper`, `filament_rack_wrapper`, `motor_control_wrapper`, `prtouch_v*_wrapper`, `serial_485_wrapper`, all `cpython-39`) were compiled against 1.1.3.13's Klipper internals. They still load on 1.1.5.2 (Python ABI unchanged — still 3.9), but ImportErrors at install time would tell us otherwise. Phase 4 testing will surface this.
+>
+> **Note on probe firmware for V4 users:** the "flash the K1 firmware" instruction further down this README is V3-era terminology. A K1-specific build only exists for Cartographer V2/V3 hardware (`Survey_Cartographer_K1_USB`, last at 5.1.0). **Cartographer V4 has no K1 variant** — the `flash.py` script correctly offers "V4 6.0.0 Full" (recommended for K2, 2× sampling rate) and "V4 6.0.0 Lite" (conservative fallback for timing issues). Upstream [Cartographer3D/cartographer_firmware](https://github.com/Cartographer3D/cartographer_firmware) has since published V4 6.1.0, but the project's 6.0.0 pin is a deliberate known-good for K2 — don't chase the newer version unless Phase 5 surfaces a Cartographer-specific bug.
+>
+> **Component fork lag (informational, as of this branch):** Jacob's `cartographer3d-plugin:k2` fork is 7 commits behind upstream (K2-specific divergence; not a bug). `fluidd:k2` is 1 behind (negligible). `moonraker:k2` is 0 behind (pure additions). None of this blocks Phase 4 install.
 
 ## Live Component Status vs Mainline
 
