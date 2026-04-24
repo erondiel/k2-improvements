@@ -1,5 +1,20 @@
 # K2 Improvements
 
+> [!IMPORTANT]
+> **You are on branch `firmware-1.1.5.2-compat` (experimental fork).**
+>
+> This branch rebases the cartographer Klipper patches onto stock firmware **1.1.5.2** (`CR0CN240110C10`, released 2026-03-31). **It has not been tested on hardware yet.** If you want the stable, maintainer-supported experience, use [Jacob10383/k2-improvements `main`](https://github.com/Jacob10383/k2-improvements) on firmware 1.1.3.13.
+>
+> **What changed in this branch (one commit, [`a7479fa`](https://github.com/erondiel/k2-improvements/commit/a7479fa)):**
+> - 3 files rebased — `homing.py`, `mcu.py`, `serialhdl.py` — via 3-way merge (stock 1.1.3.13 as common ancestor, stock 1.1.5.2 as Creality's branch, the project's patches as ours).
+> - 4 files byte-identical to upstream — `bed_mesh.py`, `clocksync.py`, `configfile.py`, `temperature_mcu.py` — because Creality didn't touch them between 1.1.3.13 and 1.1.5.2.
+> - One genuine line-level conflict at `homing.py` L43 (prtouch_v3 lookup) resolved by hand. Full rationale in the commit message.
+> - `python3 -m py_compile` passes on all seven files. No operational validation yet.
+>
+> **Interesting finding during the rebase:** Creality's 1.1.5.2 changes to `mcu.py` trsync-tag handling move in the **same direction** as this project's patches (both add `& 0xffffffff` masking to `state_tag`). `clocksync.py` is byte-identical across 1.1.3.13 / 1.1.4.x / 1.1.5.2 — not where the "timing issue" lives.
+>
+> **Caveat:** the `.so` blobs Creality ships (`box_wrapper`, `filament_rack_wrapper`, `motor_control_wrapper`, `prtouch_v*_wrapper`, `serial_485_wrapper`, all `cpython-39`) were compiled against 1.1.3.13's Klipper internals. They still load on 1.1.5.2 (Python ABI unchanged — still 3.9), but ImportErrors at install time would tell us otherwise. Phase 4 testing will surface this.
+
 ## Live Component Status vs Mainline
 
 [![Fluidd](https://img.shields.io/badge/dynamic/json?url=https://api.github.com/repos/fluidd-core/fluidd/compare/develop...Jacob10383:fluidd:k2&query=$.behind_by&label=Fluidd&suffix=%20commits%20behind&color=blue&style=for-the-badge&logo=github)](https://github.com/Jacob10383/fluidd/tree/k2)  
@@ -15,10 +30,12 @@
 
 ## Firmware & Cartographer Support
 
-**Recommended Firmware:** 1.1.3.13
+**Recommended Firmware:** 1.1.3.13 on `main`; **1.1.5.2 on this branch (unvalidated)**
 
 > [!WARNING]
 > 1.1.4.x is "compatabile" but the firmware itself has numerous known issues. Timing problems can be exacerbated when using Cartographer.
+>
+> **1.1.5.2 (this branch only):** rebased but not yet tested on hardware. Do not install on a printer you rely on until Phase 4/5 empirical validation lands. Roll back to `main` + 1.1.3.13 if you hit issues.
 
 **Cartographer Support:**
 
