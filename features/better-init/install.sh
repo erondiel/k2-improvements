@@ -20,4 +20,5 @@ ln -sf ${SCRIPT_DIR}/bin/supervisorctl /mnt/UDISK/bin/
 ln -sf ${SCRIPT_DIR}/bin/systemctl /mnt/UDISK/bin/
 
 # update the path
+mkdir -p /etc/profile.d
 echo 'export PATH=/mnt/UDISK/bin:$PATH' > /etc/profile.d/better-init.sh
