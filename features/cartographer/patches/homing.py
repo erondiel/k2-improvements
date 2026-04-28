@@ -44,7 +44,7 @@ class HomingMove:
             toolhead = printer.lookup_object('toolhead')
 
         self.prtouch_v3 = self.printer.lookup_object('cartographer') if self.printer.objects.get('cartographer') else None
-        if self.prtouch_v3 is not None:
+        if self.prtouch_v3 is not None and hasattr(self.prtouch_v3, 'z_full_movement_flag'):
             self.prtouch_v3.z_full_movement_flag = False
         self.toolhead = toolhead
         self.stepper_positions = []
@@ -117,7 +117,7 @@ class HomingMove:
         trigger_times = {}
         move_end_print_time = self.toolhead.get_last_move_time()
         suspended_det_status = False
-        if self.prtouch_v3 is not None:
+        if self.prtouch_v3 is not None and hasattr(self.prtouch_v3, 'get_suspended_det_status'):
             suspended_det_status = self.prtouch_v3.get_suspended_det_status()
         for mcu_endstop, name in self.endstops:
             trigger_time = mcu_endstop.home_wait(move_end_print_time)
@@ -132,7 +132,8 @@ class HomingMove:
                 # z轴误触发后,对x、y电机进行切换为错误码输出模式
                 if name == "z":
                     error = None
-                    self.prtouch_v3.z_full_movement_flag = True
+                    if hasattr(self.prtouch_v3, 'z_full_movement_flag'):
+                        self.prtouch_v3.z_full_movement_flag = True
                     logging.info("No trigger on z after full movement, set MOTOR_STALL_MODE DATA=2")
                     gcode = self.printer.lookup_object('gcode')
                     gcode.run_script_from_command("MOTOR_STALL_MODE DATA=2")
@@ -266,7 +267,8 @@ class Homing:
             hmove.homing_move(homepos, hi.second_homing_speed)
 
             if hmove.check_no_movement() is not None and rails[0].get_name() == "stepper_z":
-                hmove.prtouch_v3.z_full_movement_flag = True
+                if hmove.prtouch_v3 is not None and hasattr(hmove.prtouch_v3, 'z_full_movement_flag'):
+                    hmove.prtouch_v3.z_full_movement_flag = True
                 self.printer.send_event("homing:homing_move_end", hmove)
 
 
