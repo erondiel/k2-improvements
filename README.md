@@ -1,23 +1,33 @@
 # K2 Improvements
 
 > [!IMPORTANT]
-> **You are on branch `firmware-1.1.5.2-compat` (experimental fork).**
+> **You are on branch `firmware-1.1.5.2-compat` — verified on hardware.**
 >
-> This branch rebases the cartographer Klipper patches onto stock firmware **1.1.5.2** (`CR0CN240110C10`, released 2026-03-31). **It has not been tested on hardware yet.** If you want the stable, maintainer-supported experience, use [Jacob10383/k2-improvements `main`](https://github.com/Jacob10383/k2-improvements) on firmware 1.1.3.13.
+> This branch rebases the cartographer Klipper patches onto stock firmware **1.1.5.2** (`CR0CN240110C10`, released 2026-03-31). **Installed and operational on a K2 Plus with Cartographer V4 6.0.0 as of 2026-04-28.** If you prefer the upstream-maintained experience on the older firmware, use [Jacob10383/k2-improvements `main`](https://github.com/Jacob10383/k2-improvements) on firmware 1.1.3.13.
 >
-> **What changed in this branch (one commit, [`a7479fa`](https://github.com/erondiel/k2-improvements/commit/a7479fa)):**
-> - 3 files rebased — `homing.py`, `mcu.py`, `serialhdl.py` — via 3-way merge (stock 1.1.3.13 as common ancestor, stock 1.1.5.2 as Creality's branch, the project's patches as ours).
-> - 4 files byte-identical to upstream — `bed_mesh.py`, `clocksync.py`, `configfile.py`, `temperature_mcu.py` — because Creality didn't touch them between 1.1.3.13 and 1.1.5.2.
-> - One genuine line-level conflict at `homing.py` L43 (prtouch_v3 lookup) resolved by hand. Full rationale in the commit message.
-> - `python3 -m py_compile` passes on all seven files. No operational validation yet.
+> **Verified end-to-end:**
+> - Clean install via `install-k2plus-1152.sh` (see [Automated installer](#automated-installer-firmware-1152-compat-only) below).
+> - Klipper boots clean — no `.so` ImportErrors from the 1.1.3.13-era `cpython-39` wrappers.
+> - `G28` homes correctly with the rebased `homing.py`.
+> - Cartographer V4 (6.0.0 Full) — manual `CARTOGRAPHER_CALIBRATE` and `BED_MESH_CALIBRATE` complete without comms loss.
+> - Multi-surface calibration: `default` / `pei` / `coolplate` scan models, touch models, and bed meshes saved and switchable via the new `START_PRINT SURFACE=…` parameter.
+> - 2 full print jobs and several adaptive bed scans completed without faults.
+>
+> **Rebase summary (`a7479fa`, then `c3892b4` follow-up fix):**
+> - 3 files rebased — `homing.py`, `mcu.py`, `serialhdl.py` — via 3-way merge (stock 1.1.3.13 ancestor, stock 1.1.5.2 Creality branch, project patches as ours).
+> - 4 files byte-identical to upstream — `bed_mesh.py`, `clocksync.py`, `configfile.py`, `temperature_mcu.py` — Creality didn't touch them between 1.1.3.13 and 1.1.5.2.
+> - One genuine line-level conflict at `homing.py` L43 (prtouch_v3 lookup) resolved during rebase.
+> - Follow-up: rebased `homing.py` originally referenced four prtouch_v3 attributes the cartographer plugin does not expose, crashing `G28`. Fixed in [`c3892b4`](https://github.com/erondiel/k2-improvements/commit/c3892b4) with `hasattr()` guards at all four sites.
 >
 > **Interesting finding during the rebase:** Creality's 1.1.5.2 changes to `mcu.py` trsync-tag handling move in the **same direction** as this project's patches (both add `& 0xffffffff` masking to `state_tag`). `clocksync.py` is byte-identical across 1.1.3.13 / 1.1.4.x / 1.1.5.2 — not where the "timing issue" lives.
 >
-> **Caveat:** the `.so` blobs Creality ships (`box_wrapper`, `filament_rack_wrapper`, `motor_control_wrapper`, `prtouch_v*_wrapper`, `serial_485_wrapper`, all `cpython-39`) were compiled against 1.1.3.13's Klipper internals. They still load on 1.1.5.2 (Python ABI unchanged — still 3.9), but ImportErrors at install time would tell us otherwise. Phase 4 testing will surface this.
+> **`.so` blobs from 1.1.3.13 era:** `box_wrapper`, `filament_rack_wrapper`, `motor_control_wrapper`, `prtouch_v*_wrapper`, `serial_485_wrapper` (all `cpython-39`) load cleanly on 1.1.5.2 — Python ABI unchanged (still 3.9). No ImportErrors observed.
 >
-> **Note on probe firmware for V4 users:** the "flash the K1 firmware" instruction further down this README is V3-era terminology. A K1-specific build only exists for Cartographer V2/V3 hardware (`Survey_Cartographer_K1_USB`, last at 5.1.0). **Cartographer V4 has no K1 variant** — the `flash.py` script correctly offers "V4 6.0.0 Full" (recommended for K2, 2× sampling rate) and "V4 6.0.0 Lite" (conservative fallback for timing issues). Upstream [Cartographer3D/cartographer_firmware](https://github.com/Cartographer3D/cartographer_firmware) has since published V4 6.1.0, but the project's 6.0.0 pin is a deliberate known-good for K2 — don't chase the newer version unless Phase 5 surfaces a Cartographer-specific bug.
+> **Note on probe firmware for V4 users:** the "flash the K1 firmware" instruction further down this README is V3-era terminology. A K1-specific build only exists for Cartographer V2/V3 hardware (`Survey_Cartographer_K1_USB`, last at 5.1.0). **Cartographer V4 has no K1 variant** — the `flash.py` script correctly offers "V4 6.0.0 Full" (recommended for K2, 2× sampling rate) and "V4 6.0.0 Lite" (conservative fallback for timing issues). Upstream [Cartographer3D/cartographer_firmware](https://github.com/Cartographer3D/cartographer_firmware) has since published V4 6.1.0, but the project's 6.0.0 pin is a deliberate known-good for K2 — don't chase the newer version unless a Cartographer-specific bug surfaces.
 >
-> **Component fork lag (informational, as of this branch):** Jacob's `cartographer3d-plugin:k2` fork is 7 commits behind upstream (K2-specific divergence; not a bug). `fluidd:k2` is 1 behind (negligible). `moonraker:k2` is 0 behind (pure additions). None of this blocks Phase 4 install.
+> **Post-`SAVE_CONFIG` caveat (K2 Plus-specific, observed during validation):** the K2 Plus motor-stall state machine in the patched `homing.py` does **not** reinitialize cleanly on a Klipper-only restart. Always **power-cycle the printer at the mains** before the next `G28` after a `SAVE_CONFIG`. A Klipper-only restart followed by `G28` has inverted Y homing direction and crashed the toolhead into the back frame. Confirmed on 1.1.5.2.
+>
+> **Component fork lag (informational):** Jacob's `cartographer3d-plugin:k2` fork is 7 commits behind upstream (K2-specific divergence; not a bug). `fluidd:k2` is 1 behind (negligible). `moonraker:k2` is 0 behind (pure additions). None observed to cause issues.
 
 ## Live Component Status vs Mainline
 
@@ -34,12 +44,12 @@
 
 ## Firmware & Cartographer Support
 
-**Recommended Firmware:** 1.1.3.13 on `main`; **1.1.5.2 on this branch (unvalidated)**
+**Recommended Firmware:** 1.1.3.13 on `main`; **1.1.5.2 on this branch (verified on hardware 2026-04-28)**
 
 > [!WARNING]
 > 1.1.4.x is "compatabile" but the firmware itself has numerous known issues. Timing problems can be exacerbated when using Cartographer.
 >
-> **1.1.5.2 (this branch only):** rebased but not yet tested on hardware. Do not install on a printer you rely on until Phase 4/5 empirical validation lands. Roll back to `main` + 1.1.3.13 if you hit issues.
+> **1.1.5.2 (this branch only):** rebased and verified on a K2 Plus with Cartographer V4 — clean Klipper boot, successful calibration, multiple completed prints and bed scans. Still a one-printer datapoint; if you hit something the original tester didn't, please open an issue with logs and consider rolling back to `main` + 1.1.3.13 while it's investigated.
 
 **Cartographer Support:**
 
