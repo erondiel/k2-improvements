@@ -1,5 +1,10 @@
 # K2 Improvements
 
+> [!NOTE]
+> **Looking for stock firmware 1.1.5.2 support?**
+> This branch (`main`) tracks [Jacob10383/k2-improvements](https://github.com/Jacob10383/k2-improvements) `main` and targets **firmware 1.1.3.13**.
+> For **1.1.5.2** support — including a one-shot SSH installer (`install-k2plus-1152.sh`) and a multi-surface `START_PRINT SURFACE=…` wrapper — switch to the [`firmware-1.1.5.2-compat`](https://github.com/erondiel/k2-improvements/tree/firmware-1.1.5.2-compat) branch. Verified on a K2 Plus + Cartographer V4 as of 2026-04-28.
+
 ## Live Component Status vs Mainline
 
 [![Fluidd](https://img.shields.io/badge/dynamic/json?url=https://api.github.com/repos/fluidd-core/fluidd/compare/develop...Jacob10383:fluidd:k2&query=$.behind_by&label=Fluidd&suffix=%20commits%20behind&color=blue&style=for-the-badge&logo=github)](https://github.com/Jacob10383/fluidd/tree/k2)  
