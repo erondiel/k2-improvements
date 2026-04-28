@@ -55,6 +55,59 @@ Use at your own risk, I'm not responsible for fires or broken dreams.  But you d
 
 As a *heads up* these improvements are not compatible with Creality's *auto-calibration*.  In our experience we get better results through manual tuning.
 
+## Automated installer (firmware-1.1.5.2-compat only)
+
+This branch ships **`install-k2plus-1152.sh`** — a single SSH-driven installer that runs all the prerequisites (Entware, the safe slice of better-root, fork placement) and then invokes `gimme-the-jamin.sh` with the right `PATH`, then strips the orphan `[prtouch_v3]` SAVE_CONFIG block. It works around six undocumented gotchas that otherwise break a fresh install on stock 1.1.5.2.
+
+Use this instead of the manual "Start Here at Bootstrap" procedure below if you're on 1.1.5.2.
+
+**Requirements before running:**
+
+- Stock K2 Plus on firmware 1.1.5.2 (`CR0CN240110C10`).
+- Root SSH enabled (Settings → General → "Open Root", note the printer-displayed password — typically `creality_2024`).
+- Cartographer probe (V3 or V4) flashed with the appropriate firmware and plugged in. Both probe revisions are supported — the installer is hardware-neutral; only the probe firmware binary you flash beforehand is hardware-specific.
+
+**Procedure (from your workstation):**
+
+```bash
+# 1. Get the fork onto the printer (any path works; /tmp is fine)
+ssh root@<printer-ip>
+cd /tmp
+wget --no-check-certificate -O k2.tar.gz \
+    https://github.com/erondiel/k2-improvements/archive/refs/heads/firmware-1.1.5.2-compat.tar.gz
+tar xf k2.tar.gz
+cd k2-improvements-firmware-1.1.5.2-compat
+
+# 2. Run the installer
+sh install-k2plus-1152.sh
+```
+
+The installer is idempotent — re-running after a partial failure resumes from the next missing step.
+
+**After it finishes:**
+
+1. **Power-cycle the printer at the mains.** The K2 Plus motor-stall state machine does not reinitialize cleanly on a Klipper-only restart; running `G28` after a Klipper-only restart has crashed the toolhead into the back frame.
+2. Open Fluidd at `http://<printer-ip>/`, verify the cartographer MCU is connected.
+3. Run `CARTOGRAPHER_CALIBRATE METHOD=manual` and `BED_MESH_CALIBRATE` followed by `SAVE_CONFIG`.
+
+For multi-surface setups, `START_PRINT` accepts a `SURFACE=<name>` parameter that loads the matching scan and touch models — see *Surface selection wrapper* below.
+
+## Surface selection wrapper
+
+`START_PRINT` accepts an optional `SURFACE=<name>` parameter (default `default`). When passed, it loads the matching saved Cartographer scan_model and touch_model before homing/probing, so multi-plate setups don't need separate gcode profiles.
+
+Example slicer machine start gcode (Creality Print / Orca, auto-selecting from the bed-type dropdown):
+
+```
+{if curr_bed_type=="Customized Plate"}
+START_PRINT EXTRUDER_TEMP=[nozzle_temperature_initial_layer] BED_TEMP=[bed_temperature_initial_layer_single] CHAMBER_TEMP=[overall_chamber_temperature] MATERIAL={filament_type[initial_tool]} SURFACE=coolplate
+{else}
+START_PRINT EXTRUDER_TEMP=[nozzle_temperature_initial_layer] BED_TEMP=[bed_temperature_initial_layer_single] CHAMBER_TEMP=[overall_chamber_temperature] MATERIAL={filament_type[initial_tool]} SURFACE=pei
+{endif}
+```
+
+Calibrate each plate under its own name (e.g. `CARTOGRAPHER_CALIBRATE METHOD=manual NAME=pei`, then with `NAME=coolplate`). The macro re-meshes adaptively every print, so you don't need named bed-mesh profiles — the active scan model is what matters at probe time.
+
 ## Start Here at Bootstrap
 
 The Bootstrap is a requirement for the improvements to install properly, so this must be accomplished first. Of note, it will install entware tools necessary to accomplish the installs. Additionally, root is enabled by default with the password: 'creality_2024'. At some point, we recommend running command 'passwd' in the terminal to change the defualt password to something secure.
