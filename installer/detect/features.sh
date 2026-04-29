@@ -19,8 +19,22 @@ is_abort_homing()  { grep -q 'ABORT_HOMING' "$KLIPPER_DIR/klippy/extras/homing.p
 is_better_init()   { [ -f /etc/profile.d/better-init.sh ]; }
 
 is_surface_wrap()  { grep -q 'surface-selection wrapper' "$PRINTER_CFG_DIR/custom/start_print.cfg" 2>/dev/null; }
-is_jimmyv()        { grep -qE '^y_offset:[[:space:]]*36' "$PRINTER_CFG_DIR/custom/cartographer.cfg" 2>/dev/null; }
+is_carto_offset_set() { is_cartographer; }  # always "set" if cartographer is installed (some value is always there)
 is_motor_guard()   { grep -q 'motor-state-guard' "$PRINTER_CFG_DIR/custom/start_print.cfg" 2>/dev/null; }
+
+# Returns a human label for the currently-installed cartographer offset preset.
+# Echoes one of: "Jamin", "JimmyV", "custom (x=N y=N)", "(no cartographer)"
+detect_carto_offset_label() {
+    local cfg="$PRINTER_CFG_DIR/custom/cartographer.cfg"
+    [ -f "$cfg" ] || { echo "(no cartographer)"; return; }
+    local x=$(awk '/^\[cartographer\]/{f=1; next} f && /^\[/ {f=0} f && /^x_offset:/ {print $2; exit}' "$cfg")
+    local y=$(awk '/^\[cartographer\]/{f=1; next} f && /^\[/ {f=0} f && /^y_offset:/ {print $2; exit}' "$cfg")
+    case "${x:-?} ${y:-?}" in
+        "0 -15") echo "Jamin (x=0 y=-15)" ;;
+        "0 36")  echo "JimmyV (x=0 y=36)" ;;
+        *)       echo "custom (x=${x:-?} y=${y:-?})" ;;
+    esac
+}
 is_homing_hasattr() { grep -q "hasattr.*get_suspended_det_status" "$KLIPPER_DIR/klippy/extras/homing.py" 2>/dev/null; }
 is_prtouch_clean() { ! grep -q '^#\*# \[prtouch_v3\]$' "$PRINTER_CFG_DIR/printer.cfg" 2>/dev/null; }
 

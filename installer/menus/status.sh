@@ -8,9 +8,10 @@ show_status() {
     local cfw=$(detect_carto_fw)
 
     printf '\n=== K2 Plus installer status ===\n\n'
-    printf '  Printer firmware : %s\n' "$fw"
-    printf '  Cartographer HW  : %s\n' "${chw:-unknown}"
-    printf '  Cartographer FW  : %s\n' "${cfw:-unknown}"
+    printf '  Printer firmware    : %s\n' "$fw"
+    printf '  Cartographer HW     : %s\n' "${chw:-unknown}"
+    printf '  Cartographer FW     : %s\n' "${cfw:-unknown}"
+    printf '  Cartographer offset : %s\n' "$(detect_carto_offset_label)"
     printf '\n--- Bootstrap ---\n'
     status_line 'Entware (opkg, git, curl)'  is_entware
     status_line 'better-root ($HOME → UDISK)' is_better_root
@@ -29,7 +30,6 @@ show_status() {
     printf '\n--- K2-Plus extras ---\n'
     status_line 'KAMP adaptive purge'         is_kamp
     status_line 'surface-selection wrapper'   is_surface_wrap
-    status_line 'JimmyV mount overrides'      is_jimmyv
     status_line 'motor-state guard'           is_motor_guard
     status_line 'homing.py hasattr fix'       is_homing_hasattr
     status_line 'prtouch_v3 SAVE_CONFIG clean' is_prtouch_clean

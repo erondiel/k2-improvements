@@ -17,7 +17,6 @@ secure-auth|is_secure_auth|features/secure-auth/install.sh
 axis_twist_compensation|is_axis_twist|features/axis_twist_compensation/install.sh
 abort_homing|is_abort_homing|features/abort_homing/install.sh
 skip-setup|is_skip_setup|features/skip-setup/install.sh
-jimmyv-mount|is_jimmyv|installer/extras/jimmyv-mount/install.sh
 surface-selection-wrapper|is_surface_wrap|installer/extras/surface-selection-wrapper/install.sh
 motor-state-guard|is_motor_guard|features/motor-state-guard/install.sh
 kamp-adaptive-purge|is_kamp|features/kamp-adaptive-purge/install.sh'
