@@ -29,8 +29,6 @@
 >
 > The `motor-state-guard` feature in this branch is a defense-in-depth safety net for this exact bug: it detects klippy-only restarts and refuses `G28` until either (a) Klipper detects a real boot via the wiped `/tmp` marker, or (b) the user runs `POWER_CYCLED_OK` to override. Empirically, no gcode command we have access to reproduces the wrapper's full re-init handshake; the safety guard prevents the crash without claiming to fix the underlying state issue.
 >
-> **Cartographer V4 mid-print USB disconnects (`USB_full` firmware, observed 2026-04-29):** during a long full-bed print on stock 1.1.5.2 with V4 6.0.0 Full, the Cartographer MCU dropped and auto-reconnected **4 times** without pausing or interrupting the print. On each reconnect the cartographer module reloads its **default** scan and touch profiles, overriding any `SURFACE=` selection that was active at `START_PRINT`. **The print itself is unaffected** — by the time disconnects happen, `START_PRINT` has already finished probing and Z-referencing, and all moves are baked into the sliced gcode; the runtime profile no longer drives toolhead Z. If the disconnects become more frequent or start affecting setup actions (calibration, manual probing), reflash with the **V4 6.0.0 Lite** build — it trades the 2× sampling rate for tighter TRSYNC timing margin and is the documented mitigation for this exact symptom.
->
 > **Component fork lag (informational):** Jacob's `cartographer3d-plugin:k2` fork is 7 commits behind upstream (K2-specific divergence; not a bug). `fluidd:k2` is 1 behind (negligible). `moonraker:k2` is 0 behind (pure additions). None observed to cause issues.
 
 ## Live Component Status vs Mainline
