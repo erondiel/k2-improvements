@@ -4,7 +4,8 @@
 # name|detector|description|script_path  (one per line, script_path relative to INSTALLER_DIR)
 _EXTRAS='prtouch-cleanup|is_prtouch_clean|Remove orphan [prtouch_v3] SAVE_CONFIG header|installer/extras/prtouch-cleanup/install.sh
 surface-selection-wrapper|is_surface_wrap|START_PRINT SURFACE= param loads matching scan/touch model|installer/extras/surface-selection-wrapper/install.sh
-cartographer-offset-setup|is_carto_offset_set|Cartographer probe X/Y offset (Jamin/JimmyV/custom)|installer/extras/cartographer-offset-setup/install.sh'
+cartographer-offset-setup|is_carto_offset_set|Cartographer probe X/Y offset (Jamin/JimmyV/custom)|installer/extras/cartographer-offset-setup/install.sh
+motor-state-guard|is_motor_guard|G28 crash-guard after klippy-only restart (UNTESTED)|features/motor-state-guard/install.sh'
 
 menu_extras() {
     while :; do
@@ -63,6 +64,29 @@ install_extra() {
             local label=$(detect_carto_offset_label)
             printf '  Currently configured: %s\n\n' "$(c_green "$label")"
             if ! confirm "Open the offset picker?"; then return 0; fi
+            ;;
+        motor-state-guard)
+            printf '\n'
+            printf '%s\n' "$(c_red '!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')"
+            printf '%s\n' "$(c_red '!!!  WARNING — UNTESTED FEATURE                              !!!')"
+            printf '%s\n' "$(c_red '!!!                                                          !!!')"
+            printf '%s\n' "$(c_red '!!!  Code looks correct but the detection mechanism (tmpfs   !!!')"
+            printf '%s\n' "$(c_red '!!!  marker, delayed_gcode handshake, G28 wrap) has NOT      !!!')"
+            printf '%s\n' "$(c_red '!!!  been verified end-to-end on a live K2 Plus.             !!!')"
+            printf '%s\n' "$(c_red '!!!                                                          !!!')"
+            printf '%s\n' "$(c_red '!!!  If the guard fails to engage you are in the same risk   !!!')"
+            printf '%s\n' "$(c_red '!!!  position as without it: G28 after a klippy-only restart !!!')"
+            printf '%s\n' "$(c_red '!!!  may invert Y and crash the toolhead into the back frame.!!!')"
+            printf '%s\n' "$(c_red '!!!                                                          !!!')"
+            printf '%s\n' "$(c_red '!!!  Install only if you understand and accept the risk.     !!!')"
+            printf '%s\n' "$(c_red '!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')"
+            printf '\n'
+            if "$det" 2>/dev/null; then
+                printf '  Status: %s\n\n' "$(c_green 'ALREADY APPLIED')"
+                if ! confirm "Re-run install.sh anyway?"; then return 0; fi
+            else
+                if ! confirm "Apply $name DESPITE the warning above?"; then return 0; fi
+            fi
             ;;
         *)
             if "$det" 2>/dev/null; then

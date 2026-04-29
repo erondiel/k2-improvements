@@ -30,6 +30,7 @@ show_status() {
     printf '\n--- K2-Plus extras ---\n'
     status_line 'KAMP adaptive purge'         is_kamp
     status_line 'surface-selection wrapper'   is_surface_wrap
+    status_line 'motor-state guard (UNTESTED)' is_motor_guard
     status_line 'homing.py hasattr fix'       is_homing_hasattr
     status_line 'prtouch_v3 SAVE_CONFIG clean' is_prtouch_clean
     printf '\n'

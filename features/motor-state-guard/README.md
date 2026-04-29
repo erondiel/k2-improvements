@@ -1,5 +1,14 @@
 # motor-state-guard
 
+> [!WARNING]
+> **UNTESTED — DO NOT RELY ON THIS FEATURE WITHOUT VERIFYING IT FIRST.**
+>
+> The detection mechanism (tmpfs marker file, `delayed_gcode` handshake, `G28` wrap via `rename_existing`) has not been verified end-to-end on a live K2 Plus. The code below describes the intended behavior; the actual flow has not been observed working.
+>
+> If the guard fails to engage, your printer is in the same risk profile as without it: `G28` after a klippy-only restart may invert Y and crash the toolhead into the back frame.
+>
+> Install only if you understand and accept this risk and are willing to test the guard yourself (a structured 7-step test is described at the bottom of this README) before relying on it. Pull requests with verification logs are welcome.
+
 Prevents `G28` from running when the K2 Plus motor wrapper's state may be stale after a Klipper-only restart.
 
 ## What problem does this solve?

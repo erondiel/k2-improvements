@@ -29,6 +29,8 @@
 >
 > The `motor-state-guard` feature in this branch is a defense-in-depth safety net for this exact bug: it detects klippy-only restarts and refuses `G28` until either (a) Klipper detects a real boot via the wiped `/tmp` marker, or (b) the user runs `POWER_CYCLED_OK` to override. Empirically, no gcode command we have access to reproduces the wrapper's full re-init handshake; the safety guard prevents the crash without claiming to fix the underlying state issue.
 >
+> **Cartographer V4 mid-print USB disconnects (`USB_full` firmware, observed 2026-04-29):** during a long full-bed print on stock 1.1.5.2 with V4 6.0.0 Full, the Cartographer MCU dropped and auto-reconnected **4 times** without pausing or interrupting the print. On each reconnect the cartographer module reloads its **default** scan and touch profiles, overriding any `SURFACE=` selection that was active at `START_PRINT`. **The print itself is unaffected** — by the time disconnects happen, `START_PRINT` has already finished probing and Z-referencing, and all moves are baked into the sliced gcode; the runtime profile no longer drives toolhead Z. If the disconnects become more frequent or start affecting setup actions (calibration, manual probing), reflash with the **V4 6.0.0 Lite** build — it trades the 2× sampling rate for tighter TRSYNC timing margin and is the documented mitigation for this exact symptom.
+>
 > **Component fork lag (informational):** Jacob's `cartographer3d-plugin:k2` fork is 7 commits behind upstream (K2-specific divergence; not a bug). `fluidd:k2` is 1 behind (negligible). `moonraker:k2` is 0 behind (pure additions). None observed to cause issues.
 
 ## Live Component Status vs Mainline
@@ -67,9 +69,30 @@ Use at your own risk, I'm not responsible for fires or broken dreams.  But you d
 
 As a *heads up* these improvements are not compatible with Creality's *auto-calibration*.  In our experience we get better results through manual tuning.
 
-## Automated installer (firmware-1.1.5.2-compat only)
+## Interactive installer (v1, new — `installer-v1` branch)
 
-This branch ships **`install-k2plus-1152.sh`** — a single SSH-driven installer that runs all the prerequisites (Entware, the safe slice of better-root, fork placement) and then invokes `gimme-the-jamin.sh` with the right `PATH`, then strips the orphan `[prtouch_v3]` SAVE_CONFIG block. It works around six undocumented gotchas that otherwise break a fresh install on stock 1.1.5.2.
+> [!IMPORTANT]
+> **v1 — partially tested.** The status panel, feature menu, KAMP, cartographer-offset-setup, surface-selection-wrapper, and prtouch-cleanup paths are verified against a live K2 Plus on 1.1.5.2 (idempotent, no-op on already-installed). The bootstrap-from-stock path (Entware install over SSH pipe), USB-stick firmware prep (port was occupied during dev), Cartographer firmware flash flow (DFU button needed), and motor-state-guard install are written but **not** exercised end-to-end. Treat as beta.
+
+Run from your PC's terminal — one command:
+
+```bash
+sh bootstrap.sh <printer-ip>
+```
+
+Bootstrap does: pipes the Entware installer over SSH (stock K2 Plus has no `wget`/`curl`), `opkg install`s git/dialog, clones this fork into `/mnt/UDISK/k2-improvements`, and prints the menu-launch command. From there, SSH into the printer and run:
+
+```
+sh /mnt/UDISK/k2-improvements/menu.sh
+```
+
+You get a 9-item menu: status panel, install-all, per-feature picker (with each feature's README shown before install confirms), Extras (K2-Plus patches), KAMP install/tune, Cartographer firmware flash, USB-stick prep for printer firmware swap, installer self-update, exit. Every install action is idempotent.
+
+**Prereqs:** root SSH enabled on the printer (Settings → General → "Open Root"), printer reachable on your LAN. Source: [`installer-v1` branch](https://github.com/erondiel/k2-improvements/tree/installer-v1).
+
+## Automated installer (firmware-1.1.5.2-compat only — older one-shot)
+
+This branch also ships **`install-k2plus-1152.sh`** — a single SSH-driven installer that runs all the prerequisites (Entware, the safe slice of better-root, fork placement) and then invokes `gimme-the-jamin.sh` with the right `PATH`, then strips the orphan `[prtouch_v3]` SAVE_CONFIG block. It works around six undocumented gotchas that otherwise break a fresh install on stock 1.1.5.2.
 
 Use this instead of the manual "Start Here at Bootstrap" procedure below if you're on 1.1.5.2.
 
