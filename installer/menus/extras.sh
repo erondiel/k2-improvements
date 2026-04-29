@@ -59,12 +59,21 @@ install_extra() {
 
     show_feature_readme "$name" "$readme"
 
-    if "$det" 2>/dev/null; then
-        printf '  Status: %s\n\n' "$(c_green 'ALREADY APPLIED')"
-        if ! confirm "Re-run install.sh anyway?"; then return 0; fi
-    else
-        if ! confirm "Apply $name now?"; then return 0; fi
-    fi
+    case "$name" in
+        cartographer-offset-setup)
+            local label=$(detect_carto_offset_label)
+            printf '  Currently configured: %s\n\n' "$(c_green "$label")"
+            if ! confirm "Open the offset picker?"; then return 0; fi
+            ;;
+        *)
+            if "$det" 2>/dev/null; then
+                printf '  Status: %s\n\n' "$(c_green 'ALREADY APPLIED')"
+                if ! confirm "Re-run install.sh anyway?"; then return 0; fi
+            else
+                if ! confirm "Apply $name now?"; then return 0; fi
+            fi
+            ;;
+    esac
 
     info "running $script"
     if sh "$script"; then
