@@ -14,6 +14,8 @@ export INSTALLER_DIR
 . "$SCRIPT_DIR/installer/menus/status.sh"
 . "$SCRIPT_DIR/installer/menus/features.sh"
 . "$SCRIPT_DIR/installer/menus/extras.sh"
+. "$SCRIPT_DIR/installer/menus/kamp.sh"
+. "$SCRIPT_DIR/installer/menus/install_all.sh"
 . "$SCRIPT_DIR/installer/menus/main.sh"
 
 require_root

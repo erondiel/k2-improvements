@@ -40,7 +40,6 @@ stub_menu() {
     press_enter
 }
 
-menu_install_all()       { stub_menu "Install all"; }
 menu_kamp()              { stub_menu "KAMP"; }
 menu_carto_fw()          { stub_menu "Cartographer firmware flash"; }
 menu_printer_fw()        { stub_menu "USB-stick firmware prep"; }
