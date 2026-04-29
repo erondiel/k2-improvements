@@ -40,7 +40,6 @@ stub_menu() {
     press_enter
 }
 
-menu_printer_fw()        { stub_menu "USB-stick firmware prep"; }
 menu_update_installer()  {
     clear
     ensure_path
