@@ -2,8 +2,7 @@
 # K2-Plus extras (patches not in upstream k2-improvements). Install only.
 
 # name|detector|description|script_path  (one per line, script_path relative to INSTALLER_DIR)
-_EXTRAS='motor-state-guard|is_motor_guard|Block G28 after Klipper-only restart (Y-axis crash guard)|features/motor-state-guard/install.sh
-prtouch-cleanup|is_prtouch_clean|Remove orphan [prtouch_v3] SAVE_CONFIG header|installer/extras/prtouch-cleanup/install.sh
+_EXTRAS='prtouch-cleanup|is_prtouch_clean|Remove orphan [prtouch_v3] SAVE_CONFIG header|installer/extras/prtouch-cleanup/install.sh
 surface-selection-wrapper|is_surface_wrap|START_PRINT SURFACE= param loads matching scan/touch model|installer/extras/surface-selection-wrapper/install.sh
 cartographer-offset-setup|is_carto_offset_set|Cartographer probe X/Y offset (Jamin/JimmyV/custom)|installer/extras/cartographer-offset-setup/install.sh'
 
