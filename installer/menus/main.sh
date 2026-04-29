@@ -41,7 +41,6 @@ stub_menu() {
 }
 
 menu_install_all()       { stub_menu "Install all"; }
-menu_features()          { stub_menu "Features"; }
 menu_extras()            { stub_menu "Extras"; }
 menu_kamp()              { stub_menu "KAMP"; }
 menu_carto_fw()          { stub_menu "Cartographer firmware flash"; }

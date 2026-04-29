@@ -12,6 +12,7 @@ export INSTALLER_DIR
 . "$SCRIPT_DIR/installer/detect/cartographer.sh"
 . "$SCRIPT_DIR/installer/detect/features.sh"
 . "$SCRIPT_DIR/installer/menus/status.sh"
+. "$SCRIPT_DIR/installer/menus/features.sh"
 . "$SCRIPT_DIR/installer/menus/main.sh"
 
 require_root
