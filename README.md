@@ -45,12 +45,14 @@ Every install action is idempotent — running `Install essentials` twice in a r
 
 Tested live on a freshly factory-reset **K2 Plus 1.1.5.2 + Cartographer V4** on 2026-04-30:
 
-- Bootstrap from stock — Entware via the Python `wget` shim, `opkg install`, git clone.
-- `Install essentials` — all 9 features land cleanly (caught and fixed multiple cascading bugs along the way: better-root's moonraker-dir trap, missing `features/macros/install.sh`, `$HOME` not refreshing between scripts after better-root, missing `~/k2-improvements` symlink, moonraker's rc.d boot entry not enabled).
+- Bootstrap from stock — Entware via the Python `wget` shim, `opkg install`, git clone, `unslung` boot hook installed (so `/opt/etc/init.d/S*` services auto-start on reboot).
+- `Install essentials` — all 9 features land cleanly (caught and fixed multiple cascading bugs along the way: better-root's moonraker-dir trap, missing `features/macros/install.sh`, `$HOME` not refreshing between scripts after better-root, missing `~/k2-improvements` symlink, missing Entware unslung boot hook, fluidd detector matching stock-Creality build instead of Jacob's patched build).
 - Status panel detection across the board.
 - Features menu (READMEs + dispatch).
-- Extras: `prtouch-cleanup`, `surface-selection-wrapper`, `cartographer-offset-setup` picker, `cartographer-macros`.
+- Extras: `prtouch-cleanup`, `surface-selection-wrapper`, `cartographer-offset-setup` picker, `cartographer-macros` (CARTO_* buttons in Fluidd).
 - KAMP install/tune.
+- Camera via patched Fluidd + WebRTC Creality service (port 8000). After install, **hard-refresh the browser** (Ctrl+Shift+R) to clear cached stock-Fluidd or you'll see "service not supported".
+- Reboot survives — moonraker, cartographer USB-bridge, and all features auto-start via the `unslung` boot hook.
 - Idempotency end-to-end.
 
 ## What's not yet verified
