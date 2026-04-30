@@ -38,21 +38,44 @@ PYEOF
     echo "I: patched secure-auth safety check"
 fi
 
-# ---- Fix 2: moonraker rc.d auto-enable on boot ----
+# ---- Fix 2: moonraker auto-start on boot (rc.d enable + rc.local hook) ----
+# Upstream removes /etc/rc.d/S*moonraker. We re-enable, AND we add a hook
+# in /etc/rc.local because procd's processing of rc.d/S* doesn't reliably
+# fire moonraker on K2 Plus boot (Klipper auto-starts fine, moonraker
+# doesn't — even with the symlink in place).
 MR="$D/features/moonraker/install.sh"
 if [ -f "$MR" ] && ! grep -q '/etc/init.d/moonraker enable' "$MR"; then
     cat >> "$MR" <<'EOF'
 
-# erondiel-fix: re-enable rc.d auto-start on boot (upstream removes
-# /etc/rc.d/S*moonraker earlier and never re-creates it). Without this,
-# moonraker doesn't auto-start after the next reboot — Klipper alone isn't
-# enough to bring the web UI back.
+# erondiel-fix: ensure moonraker auto-starts on boot. Two-pronged:
+# 1) Re-enable rc.d/S56moonraker (upstream removed it earlier).
+# 2) Add a hook to /etc/rc.local (run at S95 by /etc/init.d/done) as
+#    a belt-and-braces fallback — procd's S56 firing is unreliable on
+#    K2 Plus.
 if [ -x /etc/init.d/moonraker ] && [ ! -e /etc/rc.d/S56moonraker ]; then
     /etc/init.d/moonraker enable
     echo "I: moonraker auto-start enabled (rc.d/S56moonraker)"
 fi
+if [ -f /etc/rc.local ] && ! grep -q 'erondiel-fix: moonraker auto-start' /etc/rc.local 2>/dev/null; then
+    python3 - <<'PYHOOK'
+path = '/etc/rc.local'
+with open(path) as f: content = f.read()
+hook = (
+    '\n# erondiel-fix: moonraker auto-start (procd boot of S56moonraker\n'
+    '# does not fire reliably on K2 Plus). Idempotent: only starts if not running.\n'
+    '[ -x /etc/init.d/moonraker ] && [ -z "$(pidof -x moonraker.py 2>/dev/null)" ] && /etc/init.d/moonraker start &\n'
+)
+if 'erondiel-fix: moonraker auto-start' not in content:
+    if '\nexit 0\n' in content:
+        content = content.replace('\nexit 0\n', hook + '\nexit 0\n', 1)
+    else:
+        content = content + hook
+    with open(path, 'w') as f: f.write(content)
+    print('I: moonraker auto-start hook added to /etc/rc.local')
+PYHOOK
+fi
 EOF
-    echo "I: patched moonraker rc.d auto-enable"
+    echo "I: patched moonraker auto-start (rc.d + rc.local hook)"
 fi
 
 # ---- Fix 3: better-root moonraker-symlink trap ----
