@@ -1,72 +1,63 @@
 #!/bin/sh
-# Apply erondiel portable bug-fixes to a freshly-cloned
-# Jacob10383/k2-improvements checkout, before the user runs
-# gimme-the-jamin.sh.
+# Apply portable bug-fixes to a freshly-cloned Jacob10383/k2-improvements
+# checkout by overlaying a small set of fixed files. Idempotent — re-running
+# is a no-op if the overlay's content already matches.
 #
-# Idempotent — re-running is a no-op if the patches are already applied,
-# and a no-op if upstream has fixed the bugs themselves (the matchers won't
-# find the broken patterns).
+# Files mirror four open PRs against Jacob10383/k2-improvements (so as
+# upstream merges them, the overlay's matching file becomes identical to
+# upstream and the cp is a silent no-op) plus one fix not yet PR'd:
 #
-# Three known upstream issues this patches:
-#   1. secure-auth — broken `grep -c PATTERN FILE -eq 0` syntax bypasses
-#      the safety check, disables password auth on printers without any
-#      authorized_keys -> user lockout.
-#   2. better-root — link_up() does `ln -sfn /usr/share/moonraker
-#      moonraker` after rsync moves the real /root/moonraker dir into
-#      /mnt/UDISK/root/. ln fails ("File exists") because dest is a real
-#      directory, not a symlink. Cascades into a failed install.
+#   1. gimme-the-jamin.sh — PR #6: PATH export so feature scripts find
+#      Entware tools (git/curl/jq/unzip).
+#   2. features/better-root/install.sh — PR #7: idempotent link_up +
+#      don't kill SSH on non-interactive runs.
+#   3. features/better-init/install.sh — PR #8: mkdir -p /etc/profile.d
+#      before writing better-init.sh.
+#   4. features/cartographer/install.sh — PR #9: strip orphan
+#      `#*# [prtouch_v3]` SAVE_CONFIG header on install.
+#   5. features/secure-auth/install.sh — not in any PR yet: fix broken
+#      `grep -c PATTERN FILE -eq 0` syntax that bypasses the safety
+#      check (would otherwise disable password SSH on a printer with
+#      no authorized_keys → user lockout).
+#
+# The overlay tree is shipped alongside this script in the same directory
+# under jacob-overlay/. bootstrap.sh SCPs both before running this script.
 
 set -eu
 
 D="${1:-/mnt/UDISK/k2-improvements}"
 [ -d "$D" ] || { echo "ERROR: $D not found"; exit 1; }
 
-# ---- Fix 1: secure-auth safety check ----
-SA="$D/features/secure-auth/install.sh"
-if [ -f "$SA" ] && grep -q "grep -c '\^ssh' /etc/dropbear/authorized_keys -eq 0" "$SA"; then
-    python3 - "$SA" <<'PYEOF'
-import sys
-p = sys.argv[1]
-with open(p) as f: content = f.read()
-old = "if grep -c '^ssh' /etc/dropbear/authorized_keys -eq 0; then"
-new = 'if [ ! -f /etc/dropbear/authorized_keys ] || [ "$(grep -c "^ssh" /etc/dropbear/authorized_keys 2>/dev/null)" -eq 0 ]; then'
-if old in content:
-    with open(p, 'w') as f: f.write(content.replace(old, new))
-PYEOF
-    echo "I: patched secure-auth safety check"
-fi
+SCRIPT_DIR="$(readlink -f "$(dirname "$0")")"
+OVERLAY="$SCRIPT_DIR/jacob-overlay"
+[ -d "$OVERLAY" ] || { echo "ERROR: overlay dir not found at $OVERLAY"; exit 1; }
 
-# Note: there's no auto-start patch needed for the 1.1.3.13 path —
-# Jacob's features/entware/install.sh correctly installs the unslung
-# boot hook (lines 85-88: cp unslung.init /etc/init.d/unslung +
-# rc.d/S99unslung symlink). On reboot, unslung runs all
-# /opt/etc/init.d/S* services including S56moonraker and S50cartographer.
-# Our installer (this repo) had to add the hook because we use a
-# streamlined Python-based Entware bootstrap that bypasses Jacob's
-# entware feature install.
+echo "I: applying erondiel portable bug-fixes (overlay) to $D"
 
-# ---- Fix 2: better-root moonraker-symlink trap ----
-BR="$D/features/better-root/install.sh"
-if [ -f "$BR" ] && grep -q 'ln -sfn /usr/share/moonraker' "$BR" && ! grep -q 'erondiel-fix:' "$BR"; then
-    python3 - "$BR" <<'PYEOF'
-import sys
-p = sys.argv[1]
-with open(p) as f: content = f.read()
-patches = {
-    "    [ -d /usr/share/moonraker ]     && ln -sfn /usr/share/moonraker     moonraker":
-        "    # erondiel-fix: skip moonraker symlinks (real-dir conflict on K2 Plus —\n"
-        "    # rsync moves /root/moonraker into the new home; then ln -sfn fails)\n"
-        "    # [ -d /usr/share/moonraker ]     && ln -sfn /usr/share/moonraker     moonraker",
-    "    [ -d /usr/share/moonraker-env ] && ln -sfn /usr/share/moonraker-env moonraker-env":
-        "    # [ -d /usr/share/moonraker-env ] && ln -sfn /usr/share/moonraker-env moonraker-env",
+apply_overlay() {
+    local src="$1"
+    local dst="$2"
+    if [ ! -f "$src" ]; then
+        echo "W:   overlay missing $src — skipping"
+        return 0
+    fi
+    if [ ! -f "$dst" ]; then
+        echo "W:   target missing $dst — skipping"
+        return 0
+    fi
+    if cmp -s "$src" "$dst"; then
+        echo "I:   $dst already matches overlay (no-op)"
+        return 0
+    fi
+    cp "$dst" "${dst}.before-erondiel-overlay" 2>/dev/null || true
+    cp "$src" "$dst"
+    echo "I:   patched $dst"
 }
-out = content
-for old, new in patches.items():
-    if old in out: out = out.replace(old, new)
-if out != content:
-    with open(p, 'w') as f: f.write(out)
-PYEOF
-    echo "I: patched better-root to skip moonraker symlinks"
-fi
+
+apply_overlay "$OVERLAY/gimme-the-jamin.sh"                   "$D/gimme-the-jamin.sh"
+apply_overlay "$OVERLAY/features/better-root/install.sh"      "$D/features/better-root/install.sh"
+apply_overlay "$OVERLAY/features/better-init/install.sh"      "$D/features/better-init/install.sh"
+apply_overlay "$OVERLAY/features/cartographer/install.sh"     "$D/features/cartographer/install.sh"
+apply_overlay "$OVERLAY/features/secure-auth/install.sh"      "$D/features/secure-auth/install.sh"
 
 echo "I: erondiel portable fixes applied to $D"

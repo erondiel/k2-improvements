@@ -220,22 +220,27 @@ ln -sf /etc/init.d/unslung /etc/rc.d/K01unslung
 echo 'I:   /etc/init.d/unslung installed; rc.d/S99unslung + K01unslung symlinked'"
 
 # If we routed to Jacob10383 upstream for a 1.1.3.13 install, apply our
-# portable bug-fixes BEFORE the user runs gimme-the-jamin.sh. Idempotent:
-# if Jacob accepts our PRs upstream, the patcher's matchers won't find
-# the broken patterns and silently no-op.
+# portable bug-fixes BEFORE the user runs gimme-the-jamin.sh.
+#
+# The patcher overlays 5 fixed files onto Jacob's checkout — 4 of them
+# correspond to open PRs against Jacob's repo (#6 PATH, #7 better-root,
+# #8 better-init, #9 cartographer) plus a secure-auth grep-syntax fix
+# not yet PR'd. Idempotent: if upstream merges any PR, the corresponding
+# overlay file becomes byte-identical to upstream and the cp is a no-op.
 if [ "$REPO_URL" = "$REPO_URL_1313" ]; then
     SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
-    PATCH_SCRIPT="$SCRIPT_DIR/installer/scripts/patch-jacob-fixes.sh"
-    if [ -f "$PATCH_SCRIPT" ]; then
+    PATCH_DIR="$SCRIPT_DIR/installer/scripts"
+    if [ -f "$PATCH_DIR/patch-jacob-fixes.sh" ] && [ -d "$PATCH_DIR/jacob-overlay" ]; then
         echo "I: applying erondiel portable bug-fixes to upstream installer"
-        $SCP "$PATCH_SCRIPT" "root@$PRINTER_IP:/tmp/patch-jacob-fixes.sh" >/dev/null
-        remote "sh /tmp/patch-jacob-fixes.sh /mnt/UDISK/k2-improvements && rm -f /tmp/patch-jacob-fixes.sh"
+        # Copy patcher + overlay tree to printer
+        remote "rm -rf /tmp/erondiel-jacob-fixes && mkdir -p /tmp/erondiel-jacob-fixes"
+        $SCP -r "$PATCH_DIR/patch-jacob-fixes.sh" "$PATCH_DIR/jacob-overlay" \
+            "root@$PRINTER_IP:/tmp/erondiel-jacob-fixes/" >/dev/null
+        remote "sh /tmp/erondiel-jacob-fixes/patch-jacob-fixes.sh /mnt/UDISK/k2-improvements && rm -rf /tmp/erondiel-jacob-fixes"
     else
-        echo "W: $PATCH_SCRIPT not found locally — your 1.1.3.13 install will hit the"
-        echo "   following known upstream bugs:"
-        echo "   - secure-auth disables password auth even with no SSH keys (lockout risk)"
-        echo "   - moonraker doesn't auto-start after reboot (rc.d entry not enabled)"
-        echo "   - better-root may fail with moonraker dir conflict"
+        echo "W: patch-jacob-fixes.sh + overlay not found locally — your 1.1.3.13 install"
+        echo "   will hit known upstream bugs (secure-auth lockout, better-root moonraker"
+        echo "   trap, gimme-the-jamin PATH, prtouch SAVE_CONFIG residue, etc.)"
     fi
 fi
 
