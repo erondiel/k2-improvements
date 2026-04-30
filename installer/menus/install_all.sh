@@ -87,37 +87,42 @@ menu_install_all() {
     done
     IFS="$OLDIFS"
 
-    # Post-install: ensure moonraker auto-starts at boot. Two-pronged fix:
-    # 1) /etc/init.d/moonraker enable — recreates rc.d/S56moonraker symlink
-    #    (upstream removes it during the moonraker feature install).
-    # 2) Append hook to /etc/rc.local — always run by /etc/init.d/done at
-    #    S95 phase. Belt-and-braces because procd's S56 firing isn't
-    #    reliable on K2 Plus (Klipper auto-starts via the same mechanism;
-    #    moonraker doesn't, even with the symlink).
-    if [ -x /etc/init.d/moonraker ]; then
-        if [ ! -e /etc/rc.d/S56moonraker ]; then
-            /etc/init.d/moonraker enable >/dev/null 2>&1 && \
-                info "moonraker auto-start enabled (rc.d/S56moonraker)"
-        fi
-        if [ -f /etc/rc.local ] && ! grep -q 'erondiel-fix: moonraker auto-start' /etc/rc.local; then
-            python3 - <<'PYEOF'
+    # Post-install: ensure moonraker AND cartographer USB-bridge auto-start
+    # at boot. Both have init scripts whose procd S* firing isn't reliable
+    # on K2 Plus (Klipper auto-starts via the same mechanism; these don't,
+    # even with the symlinks). Belt-and-braces fix: append hooks to
+    # /etc/rc.local — always run by /etc/init.d/done at S95 phase.
+    if [ -f /etc/rc.local ]; then
+        python3 - <<'PYEOF'
+import os
 path = '/etc/rc.local'
 with open(path) as f: content = f.read()
-hook = (
-    '\n# erondiel-fix: moonraker auto-start (procd boot of S56moonraker\n'
-    '# does not fire reliably on K2 Plus). Idempotent: only starts if not running.\n'
-    '[ -x /etc/init.d/moonraker ] && [ -z "$(pidof -x moonraker.py 2>/dev/null)" ] && /etc/init.d/moonraker start &\n'
-)
+hooks = []
 if 'erondiel-fix: moonraker auto-start' not in content:
+    hooks.append(
+        '\n# erondiel-fix: moonraker auto-start (procd boot of S56moonraker\n'
+        '# does not fire reliably on K2 Plus). Idempotent: only starts if not running.\n'
+        '[ -x /etc/init.d/moonraker ] && [ -z "$(pidof -x moonraker.py 2>/dev/null)" ] && /etc/init.d/moonraker start &\n'
+    )
+if 'erondiel-fix: cartographer auto-start' not in content:
+    hooks.append(
+        '\n# erondiel-fix: cartographer USB-bridge auto-start (procd boot of\n'
+        '# S50cartographer is also unreliable on K2 Plus). Idempotent.\n'
+        '[ -x /etc/init.d/cartographer ] && [ ! -e /dev/cartographer ] && /etc/init.d/cartographer start &\n'
+    )
+if hooks:
+    block = ''.join(hooks)
     if '\nexit 0\n' in content:
-        content = content.replace('\nexit 0\n', hook + '\nexit 0\n', 1)
+        content = content.replace('\nexit 0\n', block + '\nexit 0\n', 1)
     else:
-        content = content + hook
+        content = content + block
     with open(path, 'w') as f: f.write(content)
+    print('I: rc.local hooks added: ' + str(len(hooks)))
 PYEOF
-            info "moonraker auto-start hook added to /etc/rc.local"
-        fi
     fi
+    # Also re-enable rc.d entries (for the boot path that does honor procd)
+    [ -x /etc/init.d/moonraker ] && [ ! -e /etc/rc.d/S56moonraker ] && \
+        /etc/init.d/moonraker enable >/dev/null 2>&1 || true
 
     printf '\n%s\n' '----------------------------------------------------------------'
     printf 'Auto-install summary: %s installed, %s skipped, %s failed\n' \

@@ -78,6 +78,30 @@ EOF
     echo "I: patched moonraker auto-start (rc.d + rc.local hook)"
 fi
 
+# ---- Fix 4: cartographer USB-bridge auto-start (same procd issue) ----
+# The cartographer feature install creates /etc/init.d/cartographer (a
+# symlink to features/cartographer/cartographer.init) but its rc.d/S50
+# entry doesn't fire reliably on K2 Plus boot either. Add an rc.local
+# hook so /dev/cartographer gets created on boot.
+if [ -f /etc/rc.local ] && ! grep -q 'erondiel-fix: cartographer auto-start' /etc/rc.local 2>/dev/null; then
+    python3 - <<'PYCARTO'
+path = '/etc/rc.local'
+with open(path) as f: content = f.read()
+hook = (
+    '\n# erondiel-fix: cartographer USB-bridge auto-start (procd boot of\n'
+    '# S50cartographer is also unreliable on K2 Plus). Idempotent.\n'
+    '[ -x /etc/init.d/cartographer ] && [ ! -e /dev/cartographer ] && /etc/init.d/cartographer start &\n'
+)
+if 'erondiel-fix: cartographer auto-start' not in content:
+    if '\nexit 0\n' in content:
+        content = content.replace('\nexit 0\n', hook + '\nexit 0\n', 1)
+    else:
+        content = content + hook
+    with open(path, 'w') as f: f.write(content)
+    print('I: cartographer auto-start hook added to /etc/rc.local')
+PYCARTO
+fi
+
 # ---- Fix 3: better-root moonraker-symlink trap ----
 BR="$D/features/better-root/install.sh"
 if [ -f "$BR" ] && grep -q 'ln -sfn /usr/share/moonraker' "$BR" && ! grep -q 'erondiel-fix:' "$BR"; then
