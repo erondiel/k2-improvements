@@ -66,6 +66,16 @@ menu_install_all() {
             failed=$((failed+1))
             continue
         fi
+        # Re-read HOME from /etc/passwd before each script — better-root
+        # changes root's home mid-flow, but the running shell's HOME is
+        # cached from login. Subsequent scripts (cartographer etc.) hardcode
+        # ~/klippy-env, ${HOME}, etc., so they need the up-to-date value.
+        local fresh_home=$(grep '^root:' /etc/passwd | cut -d: -f6)
+        if [ -n "$fresh_home" ] && [ "$fresh_home" != "$HOME" ]; then
+            export HOME="$fresh_home"
+            info "HOME updated to $HOME"
+        fi
+
         if sh "$script"; then
             installed=$((installed+1))
         else
