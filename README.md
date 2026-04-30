@@ -137,7 +137,7 @@ Many K2 beds resemble a taco or valley. In the [bed_leveling](bed_leveling) fold
 - [@Guilouz](https://github.com/Guilouz) — Creality Helper Script and K1 docs (standing on the shoulders of giants)
 - [@stranula](https://github.com/stranula)
 - [@juliosueiras](https://github.com/juliosueiras)
-- JimmyV (printables.com) — the K2 Plus back-mount Cartographer adapter
+- JimmyV (printables.com) — the K2 Plus back-mount Cartographer V4 adapter
 
 Stack:
 
