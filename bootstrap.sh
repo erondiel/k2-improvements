@@ -18,8 +18,14 @@ set -eu
 
 PRINTER_IP="${1:-}"
 PASSWORD="${2:-creality_2024}"
-REPO_URL="${REPO_URL:-https://github.com/erondiel/k2-improvements.git}"
-REPO_BRANCH="${REPO_BRANCH:-installer-v1}"
+REPO_URL_152="${REPO_URL_152:-https://github.com/erondiel/k2-improvements.git}"
+REPO_BRANCH_152="${REPO_BRANCH_152:-main}"
+REPO_URL_1313="${REPO_URL_1313:-https://github.com/Jacob10383/k2-improvements.git}"
+REPO_BRANCH_1313="${REPO_BRANCH_1313:-main}"
+# REPO_URL / REPO_BRANCH / LAUNCH_CMD are picked after firmware detection below
+REPO_URL=""
+REPO_BRANCH=""
+LAUNCH_CMD=""
 
 if [ -z "$PRINTER_IP" ]; then
     echo "usage: sh bootstrap.sh <printer-ip> [password]"
@@ -53,6 +59,53 @@ remote "true" || {
     echo "       2. Confirm IP and password"
     exit 1
 }
+
+# Detect printer firmware to pick the right installer source.
+# Our cartographer Klipper patches are rebased for 1.1.5.2; on 1.1.3.13 we
+# route to Jacob10383 upstream (which has the original 1.1.3.13 patches and
+# its own one-shot gimme-the-jamin.sh).
+echo "I: detecting printer firmware version"
+PRINTER_FW=$(remote "grep -oE 'sys = [0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' /mnt/UDISK/creality/userdata/log/upgrade-server.log 2>/dev/null | tail -1 | awk '{print \$3}'")
+
+case "$PRINTER_FW" in
+    1.1.5.2)
+        echo "I:   firmware: 1.1.5.2 — using erondiel/k2-improvements (verified on this version)"
+        REPO_URL="$REPO_URL_152"
+        REPO_BRANCH="$REPO_BRANCH_152"
+        LAUNCH_CMD="sh /mnt/UDISK/k2-improvements/menu.sh"
+        ;;
+    1.1.3.13)
+        echo "I:   firmware: 1.1.3.13 — switching to Jacob10383/k2-improvements upstream"
+        echo "I:   (this fork's installer is rebased for 1.1.5.2; on 1.1.3.13 use the original)"
+        REPO_URL="$REPO_URL_1313"
+        REPO_BRANCH="$REPO_BRANCH_1313"
+        LAUNCH_CMD="sh /mnt/UDISK/k2-improvements/gimme-the-jamin.sh"
+        ;;
+    "")
+        echo "W:   firmware: could not detect (upgrade-server.log empty or absent)"
+        echo "W:   defaulting to erondiel/k2-improvements; if this is a 1.1.3.13 printer,"
+        echo "W:   cancel now and re-run with REPO_URL_152= and REPO_BRANCH_152= overrides"
+        REPO_URL="$REPO_URL_152"
+        REPO_BRANCH="$REPO_BRANCH_152"
+        LAUNCH_CMD="sh /mnt/UDISK/k2-improvements/menu.sh"
+        ;;
+    *)
+        echo "W:   firmware: $PRINTER_FW — not 1.1.5.2 or 1.1.3.13"
+        echo "W:   This installer is verified only on those two versions. Pick how to proceed:"
+        echo ""
+        echo "  1) Use erondiel/k2-improvements (rebased for 1.1.5.2; might work on 1.1.4.x)"
+        echo "  2) Use Jacob10383/k2-improvements upstream (1.1.3.13 patches)"
+        echo "  3) Cancel"
+        printf "Choose [1-3]: "
+        read FW_CHOICE
+        case "$FW_CHOICE" in
+            1) REPO_URL="$REPO_URL_152"; REPO_BRANCH="$REPO_BRANCH_152"; LAUNCH_CMD="sh /mnt/UDISK/k2-improvements/menu.sh" ;;
+            2) REPO_URL="$REPO_URL_1313"; REPO_BRANCH="$REPO_BRANCH_1313"; LAUNCH_CMD="sh /mnt/UDISK/k2-improvements/gimme-the-jamin.sh" ;;
+            3) echo "I: cancelled"; exit 0 ;;
+            *) echo "ERROR: invalid choice"; exit 1 ;;
+        esac
+        ;;
+esac
 
 echo "I: checking Entware on printer"
 HAS_OPKG=$(remote "[ -x /opt/bin/opkg ] && echo yes || echo no")
@@ -148,13 +201,16 @@ cat <<EOF
 ==================================================================
  Bootstrap complete.
 
- To open the installer menu, SSH in and run menu.sh:
+ Source: $REPO_URL ($REPO_BRANCH branch)
+ Detected firmware: ${PRINTER_FW:-unknown}
+
+ To start the installer, SSH in and run:
 
    ssh root@$PRINTER_IP
-   sh /mnt/UDISK/k2-improvements/menu.sh
+   $LAUNCH_CMD
 
  Or one-line:
 
-   ssh root@$PRINTER_IP 'sh /mnt/UDISK/k2-improvements/menu.sh'
+   ssh root@$PRINTER_IP '$LAUNCH_CMD'
 ==================================================================
 EOF
