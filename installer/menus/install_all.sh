@@ -87,6 +87,17 @@ menu_install_all() {
     done
     IFS="$OLDIFS"
 
+    # Post-install: re-enable moonraker for OpenWrt-style rc.d boot.
+    # Upstream features/moonraker/install.sh REMOVES /etc/rc.d/S*moonraker
+    # and only symlinks to /opt/etc/init.d/S56moonraker (Entware path),
+    # but K2 Plus's boot doesn't traverse /opt/etc/init.d/ — so moonraker
+    # ends up never auto-starting on reboot. Restoring the rc.d entry
+    # is idempotent (no-op if already enabled).
+    if [ -x /etc/init.d/moonraker ] && [ ! -e /etc/rc.d/S56moonraker ]; then
+        /etc/init.d/moonraker enable >/dev/null 2>&1 && \
+            info "moonraker auto-start enabled for boot (rc.d/S56moonraker)"
+    fi
+
     printf '\n%s\n' '----------------------------------------------------------------'
     printf 'Auto-install summary: %s installed, %s skipped, %s failed\n' \
         "$(c_green "$installed")" "$skipped" "$(c_red "$failed")"
