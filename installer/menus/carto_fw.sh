@@ -19,6 +19,10 @@ menu_carto_fw() {
         printf '  Detected hardware : %s\n' "${hw:-unknown}"
         printf '  Current firmware  : %s\n\n' "${cur:-unknown}"
 
+        printf '%s\n' "$(c_red '!!  UNTESTED — physical access to the probe DFU button required.  !!')"
+        printf '%s\n' "$(c_red '!!  Code is written but never run end-to-end. If you flash and    !!')"
+        printf '%s\n' "$(c_red '!!  hit issues, please open an issue on github with the output.   !!')"
+        printf '\n'
         printf '%s\n' "$(c_dim 'Flashing uses the upstream flash.py tool — auto-detects V3/V4,')"
         printf '%s\n\n' "$(c_dim 'shows its own build picker (full/lite for V4, USB/K1-USB for V3).')"
 

@@ -25,6 +25,11 @@ menu_printer_fw() {
         local stick=$(detect_usb_stick)
 
         printf '\n=== Prepare USB stick — printer firmware swap ===\n\n'
+        printf '%s\n' "$(c_red '!!  UNTESTED — the copy-to-stick step has not been run end-to-end.  !!')"
+        printf '%s\n' "$(c_red '!!  USB stick detection + path logic look correct, but on the test  !!')"
+        printf '%s\n' "$(c_red '!!  printer the only USB port is occupied by the Cartographer probe !!')"
+        printf '%s\n' "$(c_red '!!  so the actual cp + flash workflow could not be exercised.       !!')"
+        printf '\n'
         printf '  Currently running : %s\n' "$cur"
         printf '  USB stick         : %s\n\n' "${stick:-$(c_red 'NOT DETECTED')}"
 

@@ -13,9 +13,8 @@
 > - All idempotent — running install-essentials twice in a row is a no-op.
 >
 > **Not yet verified end-to-end:**
-> - `bootstrap.sh` from a stock printer (Entware install via SSH pipe — the path stock K2 Plus needs because it has no `wget`/`curl`).
-> - USB-stick firmware-prep copy step (the test printer's USB port was occupied by Cartographer during dev).
-> - Cartographer firmware flash flow (needs DFU button press; menu, picker, and HW-mismatch guard are written but no actual flash run).
+> - **Cartographer firmware flash flow (item 6)** — needs DFU button press. Menu, picker, and HW-mismatch guard are written and look right, but the actual flash never ran. **Tagged `(UNTESTED)` in the menu**; if you flash and hit issues, please open an issue with output.
+> - **USB-stick printer-firmware prep (item 7)** — the test printer's only USB port is occupied by the Cartographer probe, so the copy step never executed. Detection logic and `cp` path look correct on inspection. **Tagged `(UNTESTED)` in the menu**.
 > - `motor-state-guard` install — code looks correct but the runtime detection mechanism (tmpfs marker / `delayed_gcode` handshake / `G28` wrap) has not been observed engaging. Clearly tagged `(UNTESTED)` in the Extras menu and its [README](./features/motor-state-guard/README.md), and intentionally excluded from the install-essentials flow.
 >
 > **All `firmware-1.1.5.2-compat` content carries forward unchanged** — the rebased Klipper patches (`homing.py`, `mcu.py`, `serialhdl.py`), multi-surface calibration, START_PRINT wrapper, the lot. See the [firmware-1.1.5.2-compat README](https://github.com/erondiel/k2-improvements/tree/firmware-1.1.5.2-compat#readme) for the full provenance and rebase notes — that branch is this branch minus the installer.
