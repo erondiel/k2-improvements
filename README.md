@@ -30,7 +30,7 @@ sh /mnt/UDISK/k2-improvements/menu.sh
 | # | Item | What it does |
 | ---: | --- | --- |
 | 1 | Status | Shows printer firmware, Cartographer HW + firmware, current offset preset, and per-feature install state. |
-| 2 | **Install essentials** (recommended) | The minimum needed to print: `entware`, `better-root-safe`, `better-init`, `cartographer`, `prtouch-cleanup`, `moonraker`, `fluidd`, `macros`, `screws_tilt_adjust`. Skips already-installed. After auto steps, prompts you to pick the Cartographer mount preset (mandatory — offsets are hardware-specific). |
+| 2 | **Install essentials** (recommended) | The minimum needed to print, in dependency order: `entware`, `better-root-safe`, `better-init`, `moonraker`, `fluidd`, `screws_tilt_adjust`, `cartographer`, `prtouch-cleanup`, `macros`. Order matches upstream `gimme-the-jamin.sh` so feature installs that register with moonraker (cartographer, fluidd) find it already running. Skips already-installed. After auto steps, prompts you to pick the Cartographer mount preset (mandatory — offsets are hardware-specific). |
 | 3 | Features ▶ | Pick any of the 13 k2-improvements features individually. Shows that feature's README inline before the install confirm. |
 | 4 | Extras ▶ | K2-Plus-only patches: `prtouch-cleanup`, `surface-selection-wrapper`, `cartographer-offset-setup` (Jamin/JimmyV/custom picker), `cartographer-macros` (CARTO_* buttons for Fluidd), `motor-state-guard` (UNTESTED). |
 | 5 | KAMP ▶ | Install / re-install / tune the [KAMP adaptive line-purge](./features/kamp-adaptive-purge/README.md). |
