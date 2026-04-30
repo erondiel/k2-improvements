@@ -8,15 +8,20 @@
 # features (secure-auth — can lock you out if installed without keys), and
 # optional integrations (obico, skip-setup) are excluded here. They stay
 # available individually from the Features and Extras menus.
+# Order matches upstream gimme-the-jamin.sh: moonraker installs BEFORE
+# cartographer/fluidd/macros so those features can register their
+# update_manager entries with moonraker. prtouch-cleanup runs after
+# cartographer (the orphan SAVE_CONFIG block only appears once cartographer's
+# alter_config.py has run).
 _INSTALL_ALL_ORDER='entware|is_entware|features/entware/install.sh
 better-root|is_better_root|installer/extras/better-root-safe/install.sh
 better-init|is_better_init|features/better-init/install.sh
-cartographer|is_cartographer|features/cartographer/install.sh
-prtouch-cleanup|is_prtouch_clean|installer/extras/prtouch-cleanup/install.sh
 moonraker|is_moonraker|features/moonraker/install.sh
 fluidd|is_fluidd|features/fluidd/install.sh
-macros|is_macros|features/macros/install.sh
-screws_tilt_adjust|is_screws_tilt|features/screws_tilt_adjust/install.sh'
+screws_tilt_adjust|is_screws_tilt|features/screws_tilt_adjust/install.sh
+cartographer|is_cartographer|features/cartographer/install.sh
+prtouch-cleanup|is_prtouch_clean|installer/extras/prtouch-cleanup/install.sh
+macros|is_macros|features/macros/install.sh'
 
 menu_install_all() {
     clear
