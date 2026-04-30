@@ -73,15 +73,16 @@ Tested live on a freshly factory-reset **K2 Plus 1.1.5.2 + Cartographer V4** on 
 
 ### Portable bug-fixes auto-applied to the 1.1.3.13 path
 
-When bootstrap routes to Jacob's upstream, it auto-applies three small patches to fix known issues in upstream's install scripts. These are idempotent and become silent no-ops if upstream accepts the corresponding PRs.
+When bootstrap routes to Jacob's upstream, it auto-applies two small patches to fix known issues in upstream's install scripts. These are idempotent and become silent no-ops if upstream accepts the corresponding PRs.
 
 | Bug in upstream | What our patch does |
 | --- | --- |
 | `features/secure-auth/install.sh` line 5: broken `grep -c PATTERN FILE -eq 0` syntax bypasses the safety check, **disables password SSH on printers with no authorized_keys → user lockout** | Replaces the check with proper shell syntax that genuinely refuses to disable password auth when no keys are configured |
-| `features/moonraker/install.sh`: removes `/etc/rc.d/S*moonraker` and only adds `/opt/etc/init.d/S56moonraker`, **moonraker doesn't auto-start after reboot** | Appends `/etc/init.d/moonraker enable` so the rc.d boot entry is recreated |
 | `features/better-root/install.sh`: tries to `ln -sfn /usr/share/moonraker moonraker` after rsync moves stock `/root/moonraker` into the new home, **install fails with "File exists"** | Comments out the moonraker symlink lines (the moonraker feature handles its own paths) |
 
 The patcher script is at [`installer/scripts/patch-jacob-fixes.sh`](./installer/scripts/patch-jacob-fixes.sh) — runs on the printer once, immediately after the upstream clone.
+
+(There WAS a third "bug" I initially flagged — moonraker not auto-starting after reboot. That turned out to be a bug introduced by **our** streamlined Entware bootstrap, not Jacob's. Jacob's `features/entware/install.sh` correctly installs the `/etc/init.d/unslung` boot hook that runs all `/opt/etc/init.d/S*` services. Our bootstrap now installs the same hook so we get the same correct behavior on the 1.1.5.2 path.)
 
 ## Looking for the older firmware-1.1.5.2-compat one-shot installer?
 
