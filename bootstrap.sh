@@ -196,6 +196,26 @@ remote "PATH=/opt/bin:/opt/sbin:\$PATH; \
         mkdir -p /mnt/UDISK/root; \
         ln -sfn /mnt/UDISK/k2-improvements /mnt/UDISK/root/k2-improvements"
 
+# If we routed to Jacob10383 upstream for a 1.1.3.13 install, apply our
+# portable bug-fixes BEFORE the user runs gimme-the-jamin.sh. Idempotent:
+# if Jacob accepts our PRs upstream, the patcher's matchers won't find
+# the broken patterns and silently no-op.
+if [ "$REPO_URL" = "$REPO_URL_1313" ]; then
+    SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+    PATCH_SCRIPT="$SCRIPT_DIR/installer/scripts/patch-jacob-fixes.sh"
+    if [ -f "$PATCH_SCRIPT" ]; then
+        echo "I: applying erondiel portable bug-fixes to upstream installer"
+        $SCP "$PATCH_SCRIPT" "root@$PRINTER_IP:/tmp/patch-jacob-fixes.sh" >/dev/null
+        remote "sh /tmp/patch-jacob-fixes.sh /mnt/UDISK/k2-improvements && rm -f /tmp/patch-jacob-fixes.sh"
+    else
+        echo "W: $PATCH_SCRIPT not found locally — your 1.1.3.13 install will hit the"
+        echo "   following known upstream bugs:"
+        echo "   - secure-auth disables password auth even with no SSH keys (lockout risk)"
+        echo "   - moonraker doesn't auto-start after reboot (rc.d entry not enabled)"
+        echo "   - better-root may fail with moonraker dir conflict"
+    fi
+fi
+
 cat <<EOF
 
 ==================================================================

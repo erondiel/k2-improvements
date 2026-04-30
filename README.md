@@ -59,11 +59,33 @@ Tested live on a freshly factory-reset **K2 Plus 1.1.5.2 + Cartographer V4** on 
 - **USB-stick printer-firmware prep (item 7)** — the test printer's only USB port is occupied by the Cartographer probe, so the copy step never executed. Detection logic and `cp` path look correct on inspection. **Tagged `(UNTESTED)` in the menu**.
 - **`motor-state-guard`** — defense-in-depth against the K2 Plus motor wrapper bug after Klipper-only restarts. Code is complete but the runtime detection mechanism (tmpfs marker / `delayed_gcode` handshake / `G28` wrap) hasn't been observed engaging. Excluded from `Install essentials`. Clearly tagged `(UNTESTED)` in the Extras menu and its [README](./features/motor-state-guard/README.md).
 
+## Firmware-version routing
+
+`bootstrap.sh` detects which Creality firmware your printer runs and picks the right install path:
+
+| Detected firmware | What bootstrap does | Final command |
+| --- | --- | --- |
+| **1.1.5.2** | Clones this fork, gives you the full TUI installer (menu + extras) | `sh /mnt/UDISK/k2-improvements/menu.sh` |
+| **1.1.3.13** | Clones [Jacob10383/k2-improvements](https://github.com/Jacob10383/k2-improvements) `main` upstream, applies our portable bug-fixes (see below), then hands off to the upstream installer | `sh /mnt/UDISK/k2-improvements/gimme-the-jamin.sh` |
+| Unknown / 1.1.4.x / other | Prompts you to pick which path to use | varies |
+
+**1.1.3.13 users do NOT get our menu UI or K2-Plus-specific extras** (KAMP via menu, surface-selection-wrapper, cartographer-offset-setup picker, cartographer-macros). Those rely on the rebased Klipper patches that only target 1.1.5.2. If you want them, switch to 1.1.5.2.
+
+### Portable bug-fixes auto-applied to the 1.1.3.13 path
+
+When bootstrap routes to Jacob's upstream, it auto-applies three small patches to fix known issues in upstream's install scripts. These are idempotent and become silent no-ops if upstream accepts the corresponding PRs.
+
+| Bug in upstream | What our patch does |
+| --- | --- |
+| `features/secure-auth/install.sh` line 5: broken `grep -c PATTERN FILE -eq 0` syntax bypasses the safety check, **disables password SSH on printers with no authorized_keys → user lockout** | Replaces the check with proper shell syntax that genuinely refuses to disable password auth when no keys are configured |
+| `features/moonraker/install.sh`: removes `/etc/rc.d/S*moonraker` and only adds `/opt/etc/init.d/S56moonraker`, **moonraker doesn't auto-start after reboot** | Appends `/etc/init.d/moonraker enable` so the rc.d boot entry is recreated |
+| `features/better-root/install.sh`: tries to `ln -sfn /usr/share/moonraker moonraker` after rsync moves stock `/root/moonraker` into the new home, **install fails with "File exists"** | Comments out the moonraker symlink lines (the moonraker feature handles its own paths) |
+
+The patcher script is at [`installer/scripts/patch-jacob-fixes.sh`](./installer/scripts/patch-jacob-fixes.sh) — runs on the printer once, immediately after the upstream clone.
+
 ## Looking for the older firmware-1.1.5.2-compat one-shot installer?
 
 The legacy `install-k2plus-1152.sh` one-shot lives on the [`firmware-1.1.5.2-compat`](https://github.com/erondiel/k2-improvements/tree/firmware-1.1.5.2-compat) branch. The new installer on `main` supersedes it but builds on the same rebased Klipper patches underneath.
-
-For the upstream-maintained experience targeting 1.1.3.13, use [Jacob10383/k2-improvements `main`](https://github.com/Jacob10383/k2-improvements).
 
 ## DISCLAIMER
 
