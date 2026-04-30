@@ -87,15 +87,36 @@ menu_install_all() {
     done
     IFS="$OLDIFS"
 
-    # Post-install: re-enable moonraker for OpenWrt-style rc.d boot.
-    # Upstream features/moonraker/install.sh REMOVES /etc/rc.d/S*moonraker
-    # and only symlinks to /opt/etc/init.d/S56moonraker (Entware path),
-    # but K2 Plus's boot doesn't traverse /opt/etc/init.d/ — so moonraker
-    # ends up never auto-starting on reboot. Restoring the rc.d entry
-    # is idempotent (no-op if already enabled).
-    if [ -x /etc/init.d/moonraker ] && [ ! -e /etc/rc.d/S56moonraker ]; then
-        /etc/init.d/moonraker enable >/dev/null 2>&1 && \
-            info "moonraker auto-start enabled for boot (rc.d/S56moonraker)"
+    # Post-install: ensure moonraker auto-starts at boot. Two-pronged fix:
+    # 1) /etc/init.d/moonraker enable — recreates rc.d/S56moonraker symlink
+    #    (upstream removes it during the moonraker feature install).
+    # 2) Append hook to /etc/rc.local — always run by /etc/init.d/done at
+    #    S95 phase. Belt-and-braces because procd's S56 firing isn't
+    #    reliable on K2 Plus (Klipper auto-starts via the same mechanism;
+    #    moonraker doesn't, even with the symlink).
+    if [ -x /etc/init.d/moonraker ]; then
+        if [ ! -e /etc/rc.d/S56moonraker ]; then
+            /etc/init.d/moonraker enable >/dev/null 2>&1 && \
+                info "moonraker auto-start enabled (rc.d/S56moonraker)"
+        fi
+        if [ -f /etc/rc.local ] && ! grep -q 'erondiel-fix: moonraker auto-start' /etc/rc.local; then
+            python3 - <<'PYEOF'
+path = '/etc/rc.local'
+with open(path) as f: content = f.read()
+hook = (
+    '\n# erondiel-fix: moonraker auto-start (procd boot of S56moonraker\n'
+    '# does not fire reliably on K2 Plus). Idempotent: only starts if not running.\n'
+    '[ -x /etc/init.d/moonraker ] && [ -z "$(pidof -x moonraker.py 2>/dev/null)" ] && /etc/init.d/moonraker start &\n'
+)
+if 'erondiel-fix: moonraker auto-start' not in content:
+    if '\nexit 0\n' in content:
+        content = content.replace('\nexit 0\n', hook + '\nexit 0\n', 1)
+    else:
+        content = content + hook
+    with open(path, 'w') as f: f.write(content)
+PYEOF
+            info "moonraker auto-start hook added to /etc/rc.local"
+        fi
     fi
 
     printf '\n%s\n' '----------------------------------------------------------------'
