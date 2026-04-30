@@ -3,22 +3,20 @@
 # + KAMP, in dependency order. Cartographer firmware flash is intentionally
 # excluded (requires the user to put the probe in DFU mode physically).
 
-# Order: bootstrap → core klipper features → web UIs → macros → extras → KAMP
+# Essentials only — what's needed to have a working K2 Plus + Cartographer.
+# QoL features (KAMP, surface-wrapper, abort_homing, axis_twist), security
+# features (secure-auth — can lock you out if installed without keys), and
+# optional integrations (obico, skip-setup) are excluded here. They stay
+# available individually from the Features and Extras menus.
 _INSTALL_ALL_ORDER='entware|is_entware|features/entware/install.sh
-better-root|is_better_root|features/better-root/install.sh
+better-root|is_better_root|installer/extras/better-root-safe/install.sh
 better-init|is_better_init|features/better-init/install.sh
 cartographer|is_cartographer|features/cartographer/install.sh
 prtouch-cleanup|is_prtouch_clean|installer/extras/prtouch-cleanup/install.sh
 moonraker|is_moonraker|features/moonraker/install.sh
 fluidd|is_fluidd|features/fluidd/install.sh
 macros|is_macros|features/macros/install.sh
-screws_tilt_adjust|is_screws_tilt|features/screws_tilt_adjust/install.sh
-secure-auth|is_secure_auth|features/secure-auth/install.sh
-axis_twist_compensation|is_axis_twist|features/axis_twist_compensation/install.sh
-abort_homing|is_abort_homing|features/abort_homing/install.sh
-skip-setup|is_skip_setup|features/skip-setup/install.sh
-surface-selection-wrapper|is_surface_wrap|installer/extras/surface-selection-wrapper/install.sh
-kamp-adaptive-purge|is_kamp|features/kamp-adaptive-purge/install.sh'
+screws_tilt_adjust|is_screws_tilt|features/screws_tilt_adjust/install.sh'
 
 menu_install_all() {
     clear
