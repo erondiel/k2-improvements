@@ -20,7 +20,6 @@ PRINTER_IP="${1:-}"
 PASSWORD="${2:-creality_2024}"
 REPO_URL="${REPO_URL:-https://github.com/erondiel/k2-improvements.git}"
 REPO_BRANCH="${REPO_BRANCH:-installer-v1}"
-ENTWARE_URL="https://bin.entware.net/armv7sf-k3.2/installer/generic.sh"
 
 if [ -z "$PRINTER_IP" ]; then
     echo "usage: sh bootstrap.sh <printer-ip> [password]"
@@ -30,6 +29,7 @@ fi
 
 if command -v sshpass >/dev/null 2>&1; then
     SSH="sshpass -p $PASSWORD ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10"
+    SCP="sshpass -p $PASSWORD scp -O -o StrictHostKeyChecking=no"
 else
     cat <<EOF
 NOTE: 'sshpass' is not installed on this PC, so SSH will prompt for the
@@ -39,6 +39,7 @@ NOTE: 'sshpass' is not installed on this PC, so SSH will prompt for the
         Mac:       brew install hudochenkov/sshpass/sshpass
 EOF
     SSH="ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10"
+    SCP="scp -O -o StrictHostKeyChecking=no"
 fi
 
 remote() { $SSH "root@$PRINTER_IP" "$@"; }
@@ -52,20 +53,65 @@ remote "true" || {
 }
 
 echo "I: checking Entware on printer"
-HAS_ENTWARE=$(remote "[ -x /opt/bin/opkg ] && echo yes || echo no")
+HAS_OPKG=$(remote "[ -x /opt/bin/opkg ] && echo yes || echo no")
 
-if [ "$HAS_ENTWARE" = "no" ]; then
-    echo "I: installing Entware (piping installer from your PC)"
-    if command -v curl >/dev/null 2>&1; then
-        DL="curl -sfL"
-    elif command -v wget >/dev/null 2>&1; then
-        DL="wget -qO-"
-    else
-        echo "ERROR: this PC needs curl or wget to fetch the Entware installer."
-        exit 1
-    fi
-    $DL "$ENTWARE_URL" \
-      | remote "mkdir -p /etc/profile.d && cat > /tmp/entware-install.sh && sh /tmp/entware-install.sh"
+if [ "$HAS_OPKG" = "no" ]; then
+    echo "I: bootstrapping Entware (printer's python3 + wget shim, since stock K2 Plus has no wget/curl)"
+
+    echo "I:   creating /opt structure and fetching opkg + opkg.conf"
+    remote "set -e
+mkdir -p /opt/bin /opt/sbin /opt/etc /opt/lib/opkg/info /opt/lib/opkg/lists /opt/var/lock /opt/tmp /opt/share /etc/profile.d
+python3 -c 'import urllib.request; urllib.request.urlretrieve(\"http://bin.entware.net/armv7sf-k3.2/installer/opkg\", \"/opt/bin/opkg\")'
+chmod +x /opt/bin/opkg
+python3 -c 'import urllib.request; urllib.request.urlretrieve(\"http://bin.entware.net/armv7sf-k3.2/installer/opkg.conf\", \"/opt/etc/opkg.conf\")'"
+fi
+
+# Ensure real wget is installed. Independent from entware bootstrap so a
+# partial install can be repaired by re-running the script.
+HAS_REAL_WGET=$(remote "/opt/bin/opkg list-installed 2>/dev/null | grep -qE '^wget(-ssl|-nossl)? ' && echo yes || echo no")
+
+if [ "$HAS_REAL_WGET" = "no" ]; then
+    echo "I: installing wget (uses python shim for the bootstrap download, then opkg overwrites it)"
+
+    # Stage a Python-based wget shim locally — opkg uses wget internally to
+    # fetch packages. The real wget package then overwrites this shim.
+    SHIM_TMP=$(mktemp)
+    cat > "$SHIM_TMP" <<'WGET_SHIM_EOF'
+#!/usr/bin/env python3
+# Minimal wget shim — used only during Entware bootstrap.
+# Supports `wget URL` and `wget -O FILE URL`; ignores other flags.
+import urllib.request, sys
+args = sys.argv[1:]
+url = None
+out = None
+while args:
+    a = args.pop(0)
+    if a == '-O':
+        out = args.pop(0)
+    elif a.startswith('-'):
+        pass
+    else:
+        url = a
+if not url:
+    sys.exit(1)
+try:
+    if out and out != '-':
+        urllib.request.urlretrieve(url, out)
+    else:
+        sys.stdout.buffer.write(urllib.request.urlopen(url).read())
+except Exception as e:
+    print(f'wget-shim error: {e}', file=sys.stderr)
+    sys.exit(1)
+WGET_SHIM_EOF
+
+    $SCP "$SHIM_TMP" "root@$PRINTER_IP:/opt/bin/wget" >/dev/null
+    rm -f "$SHIM_TMP"
+
+    remote "set -e
+chmod +x /opt/bin/wget
+PATH=/opt/bin:/opt/sbin:\$PATH /opt/bin/opkg update >/dev/null 2>&1 || true
+PATH=/opt/bin:/opt/sbin:\$PATH /opt/bin/opkg install --force-overwrite entware-opt 2>&1 | tail -3
+PATH=/opt/bin:/opt/sbin:\$PATH /opt/bin/opkg install --force-overwrite wget"
 fi
 
 echo "I: ensuring opkg packages (git, dialog, ca-bundle)"
