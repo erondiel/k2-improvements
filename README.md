@@ -1,5 +1,7 @@
 # K2 Improvements — `erondiel` fork
 
+[![Latest release](https://img.shields.io/github/v/release/erondiel/k2-improvements?label=latest&style=flat-square)](https://github.com/erondiel/k2-improvements/releases/latest)
+
 Interactive TUI installer for the K2 Plus on stock Creality firmware. Builds on top of [Jacob10383/k2-improvements](https://github.com/Jacob10383/k2-improvements) — adds a one-command bootstrap, a 9-item menu, idempotent install scripts, and K2-Plus-specific extras (KAMP, surface-selection wrapper, Cartographer offset picker, CARTO_* gcode_macros for Fluidd).
 
 ## Quick install
