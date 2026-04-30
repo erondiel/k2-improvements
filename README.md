@@ -3,20 +3,20 @@
 > [!IMPORTANT]
 > **You are on branch `installer-v1` — interactive menu installer (beta).**
 >
-> This branch adds an interactive TUI installer on top of [`firmware-1.1.5.2-compat`](https://github.com/erondiel/k2-improvements/tree/firmware-1.1.5.2-compat). Run **`sh bootstrap.sh <printer-ip>`** from your PC to bootstrap a fresh printer (Entware → `opkg` → `git clone` → menu launch) and then drive every install through a 9-item menu: status panel, install-all, features, extras, KAMP, Cartographer firmware flash, USB-stick prep for printer-firmware swap, installer self-update.
+> This branch adds an interactive TUI installer on top of [`firmware-1.1.5.2-compat`](https://github.com/erondiel/k2-improvements/tree/firmware-1.1.5.2-compat). Run **`sh bootstrap.sh <printer-ip>`** from your PC to bootstrap a fresh printer (Entware → `opkg` → `git clone` → menu launch) and then drive every install through a 9-item menu: status panel, install essentials, features, extras, KAMP, Cartographer firmware flash, USB-stick prep for printer-firmware swap, installer self-update.
 >
 > **Verified on a live K2 Plus 1.1.5.2 + Cartographer V4 (2026-04-29):**
 > - Status panel detection (printer fw, carto HW + fw, every feature's install state).
-> - Features menu — picks any of the 13 k2-improvements features, shows that feature's upstream README before the install confirm, dispatches to the correct `install.sh`, dependency-ordered install-all.
+> - Features menu — picks any of the 13 k2-improvements features, shows that feature's upstream README before the install confirm, dispatches to the correct `install.sh`, dependency-ordered install-essentials.
 > - Extras: `prtouch-cleanup`, `surface-selection-wrapper`, `cartographer-offset-setup` (Jamin / JimmyV / custom picker, with current-state preview, idempotency, and numeric validation on custom values).
 > - KAMP install/tune sub-menu.
-> - All idempotent — running install-all twice in a row is a no-op.
+> - All idempotent — running install-essentials twice in a row is a no-op.
 >
 > **Not yet verified end-to-end:**
 > - `bootstrap.sh` from a stock printer (Entware install via SSH pipe — the path stock K2 Plus needs because it has no `wget`/`curl`).
 > - USB-stick firmware-prep copy step (the test printer's USB port was occupied by Cartographer during dev).
 > - Cartographer firmware flash flow (needs DFU button press; menu, picker, and HW-mismatch guard are written but no actual flash run).
-> - `motor-state-guard` install — code looks correct but the runtime detection mechanism (tmpfs marker / `delayed_gcode` handshake / `G28` wrap) has not been observed engaging. Clearly tagged `(UNTESTED)` in the Extras menu and its [README](./features/motor-state-guard/README.md), and intentionally excluded from the install-all flow.
+> - `motor-state-guard` install — code looks correct but the runtime detection mechanism (tmpfs marker / `delayed_gcode` handshake / `G28` wrap) has not been observed engaging. Clearly tagged `(UNTESTED)` in the Extras menu and its [README](./features/motor-state-guard/README.md), and intentionally excluded from the install-essentials flow.
 >
 > **All `firmware-1.1.5.2-compat` content carries forward unchanged** — the rebased Klipper patches (`homing.py`, `mcu.py`, `serialhdl.py`), multi-surface calibration, START_PRINT wrapper, the lot. See the [firmware-1.1.5.2-compat README](https://github.com/erondiel/k2-improvements/tree/firmware-1.1.5.2-compat#readme) for the full provenance and rebase notes — that branch is this branch minus the installer.
 
@@ -118,7 +118,7 @@ The menu (9 items):
 | # | Item | What it does |
 | ---: | --- | --- |
 | 1 | Status | Shows printer firmware, Cartographer HW + firmware build, current Cartographer offset preset (Jamin / JimmyV / custom), and per-feature install state (`[X]` / `[ ]`). |
-| 2 | Install all (recommended) | Walks the dependency-ordered install: entware → better-root → cartographer → moonraker / fluidd / macros / screws_tilt → secure-auth / axis_twist / abort_homing / skip-setup → surface-selection-wrapper → KAMP. Skips already-installed. **Excludes** Cartographer firmware flash (needs DFU button), USB-stick prep (needs physical stick), `cartographer-offset-setup` (needs you to know which mount), and `motor-state-guard` (untested). |
+| 2 | Install essentials (recommended) | The minimum needed to run a K2 Plus + Cartographer probe. Auto-installs (in dep order): entware → better-root-safe → better-init → cartographer → prtouch-cleanup → moonraker → fluidd → macros → screws_tilt_adjust. Skips already-installed. After auto steps, **prompts you to pick the Cartographer mount preset** (Jamin / JimmyV / custom — mandatory because probe offsets are hardware-specific). **Excludes**: Cartographer firmware flash (DFU button needed), USB-stick firmware prep (physical stick), QoL features (KAMP, surface-wrapper, axis_twist, abort_homing, skip-setup, secure-auth, obico, motor-state-guard) — those are individual picks via Features (item 3) or Extras (item 4). |
 | 3 | Features ▶ | Pick any of the 13 k2-improvements features individually. Shows that feature's upstream README inline before the install confirm. |
 | 4 | Extras ▶ | K2-Plus-only patches: `prtouch-cleanup`, `surface-selection-wrapper`, `cartographer-offset-setup` (Jamin / JimmyV / custom picker), `motor-state-guard` *(UNTESTED — see warning in the menu)*. |
 | 5 | KAMP ▶ | Install / re-install / tune the [KAMP adaptive line-purge](./features/kamp-adaptive-purge/README.md) on the K2 Plus. |
@@ -127,7 +127,7 @@ The menu (9 items):
 | 8 | Update installer (`git pull`) | Refresh `/mnt/UDISK/k2-improvements` from this branch. |
 | 9 | Exit | |
 
-Every install action is idempotent — re-running `Install all` is a no-op once everything's done.
+Every install action is idempotent — re-running `Install essentials` is a no-op once everything's done.
 
 **Prereqs:** root SSH enabled on the printer (Settings → General → "Open Root", note the password — typically `creality_2024`), printer reachable on your LAN, your PC has `ssh` and `curl` (or `wget`).
 

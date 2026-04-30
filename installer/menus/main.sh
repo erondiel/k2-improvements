@@ -8,7 +8,7 @@ main_menu() {
         local chw=$(detect_carto_hw)
         printf '\n=== K2 Plus Installer ===  fw: %s  carto: %s\n\n' "$fw" "${chw:-unknown}"
         printf '  1. Status — show what is installed\n'
-        printf '  2. Install all (recommended)\n'
+        printf '  2. Install essentials (recommended)\n'
         printf '  3. Features (k2-improvements) ▶\n'
         printf '  4. Extras (K2-Plus patches) ▶\n'
         printf '  5. KAMP adaptive purge ▶\n'

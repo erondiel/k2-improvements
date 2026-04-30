@@ -20,10 +20,14 @@ screws_tilt_adjust|is_screws_tilt|features/screws_tilt_adjust/install.sh'
 
 menu_install_all() {
     clear
-    printf '\n=== Install all (recommended) ===\n\n'
-    printf 'Walks the canonical install order, skipping anything already done.\n'
-    printf 'Cartographer firmware flash and printer firmware swap are NOT in this\n'
-    printf 'flow — those need physical interaction (DFU button, USB stick).\n\n'
+    printf '\n=== Install essentials (recommended) ===\n\n'
+    printf 'The minimum needed to run a K2 Plus + Cartographer probe. Skips anything\n'
+    printf 'already installed. After the auto steps, prompts you to pick your\n'
+    printf 'Cartographer mount preset (mandatory — probe offsets depend on hardware).\n\n'
+    printf 'NOT in this flow (need physical interaction or are optional):\n'
+    printf '  - Cartographer firmware flash (DFU button)\n'
+    printf '  - Printer firmware swap (USB stick)\n'
+    printf '  - QoL features (KAMP, surface-wrapper, axis_twist, etc.) — Extras menu\n\n'
     printf 'Plan:\n'
     local OLDIFS="$IFS"
     IFS='
@@ -42,7 +46,7 @@ menu_install_all() {
     printf '%s\n' "$(c_yellow 'WARNING: this can take 5-15 minutes and will modify Klipper.')"
     printf '         Make sure no print is active.\n\n'
 
-    if ! confirm "Proceed with install all?"; then return 0; fi
+    if ! confirm "Proceed with install essentials?"; then return 0; fi
 
     local installed=0 skipped=0 failed=0
     OLDIFS="$IFS"
@@ -84,12 +88,34 @@ menu_install_all() {
     IFS="$OLDIFS"
 
     printf '\n%s\n' '----------------------------------------------------------------'
-    printf 'Install-all summary: %s installed, %s skipped, %s failed\n' \
+    printf 'Auto-install summary: %s installed, %s skipped, %s failed\n' \
         "$(c_green "$installed")" "$skipped" "$(c_red "$failed")"
     printf '%s\n\n' '----------------------------------------------------------------'
-    printf 'Next steps:\n'
-    printf '  1. Restart Klipper (FIRMWARE_RESTART) — but ONLY if no print is active.\n'
-    printf '  2. Power-cycle from the mains before the next G28 (motor-state caveat).\n'
-    printf '  3. If you use Cartographer probe firmware: menu item 6 (manual flash).\n\n'
+
+    # Mandatory final step: pick the Cartographer mount preset. The offset
+    # values are hardware-specific so we can't auto-pick — but the user must
+    # set them or Z-probing will be wrong across the bed.
+    if is_cartographer; then
+        printf '%s\n' "$(c_yellow 'MANDATORY: select your Cartographer mount preset')"
+        printf 'Probe x_offset and y_offset depend on which physical mount you have.\n'
+        printf 'Without picking the right preset, Z heights are wrong across the bed.\n\n'
+        if confirm "Open the Cartographer offset picker now?"; then
+            HOME=$(awk -F: '$1=="root"{print $6}' /etc/passwd) \
+                sh "$INSTALLER_DIR/installer/extras/cartographer-offset-setup/install.sh" || true
+        else
+            printf '\n%s\n\n' "$(c_yellow 'Skipped — run it later from Extras menu (item 4).')"
+        fi
+    fi
+
+    printf '\nFinal manual steps:\n'
+    printf '  1. Power-cycle the printer from the mains (the cartographer install\n'
+    printf '     restarted Klipper, which under K2 Plus motor-state caveat means\n'
+    printf '     your next G28 must come AFTER a real boot).\n'
+    printf '  2. Optional QoL: KAMP (item 5), surface-selection-wrapper (item 4),\n'
+    printf '     axis_twist_compensation / abort_homing / skip-setup (item 3).\n'
+    printf '  3. Optional: Cartographer firmware flash (item 6), printer firmware\n'
+    printf '     swap prep (item 7) — both need physical interaction.\n'
+    printf '  4. Calibrate per surface: CARTOGRAPHER_CALIBRATE METHOD=manual NAME=<plate>\n'
+    printf '     and BED_MESH_CALIBRATE for each plate (default/pei/coolplate/etc).\n\n'
     press_enter
 }
