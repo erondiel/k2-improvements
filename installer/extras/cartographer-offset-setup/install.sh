@@ -1,9 +1,15 @@
 #!/bin/sh
 # Cartographer probe X/Y offset picker.
 #
-# Touches only [cartographer] x_offset and y_offset in custom/cartographer.cfg.
-# Mesh region and stepper_y values are left alone — those are general K2 Plus
-# settings, not mount-specific.
+# Touches [cartographer] x_offset / y_offset AND [stepper_y] position_endstop
+# / position_min in custom/cartographer.cfg. The stepper_y range MUST match
+# the mount geometry — for the toolhead to reach a probe Y position, the
+# nozzle-axis Y must be (probe_Y - y_offset). Examples:
+#   Jamin (y_offset=-15): probe Y=5 → toolhead Y=20  (position_min=-0.4 OK)
+#   JimmyV (y_offset=36):  probe Y=5 → toolhead Y=-31 (needs position_min<=-32)
+# Without widening position_min, BED_MESH_CALIBRATE on JimmyV throws
+# "Move out of range" and fails. Mesh region stays the same — the bed is
+# physically the same regardless of mount.
 #
 # Idempotent — picking the preset that's already applied is a no-op.
 
@@ -47,8 +53,8 @@ printf 'Choose: '
 read -r choice
 
 case "$choice" in
-    1) NEW_X=0;  NEW_Y=-15; LABEL='Jamin Collins front-mount' ;;
-    2) NEW_X=0;  NEW_Y=36;  LABEL='JimmyV back-mount' ;;
+    1) NEW_X=0;  NEW_Y=-15; NEW_YMIN=-0.4;  LABEL='Jamin Collins front-mount' ;;
+    2) NEW_X=0;  NEW_Y=36;  NEW_YMIN=-32;   LABEL='JimmyV back-mount' ;;
     3)
         printf '  x_offset (mm, default %s): ' "$CURRENT_X"
         read -r NEW_X
@@ -68,6 +74,10 @@ case "$choice" in
             ok=$(awk -v x="$v" 'BEGIN { print (x >= -100 && x <= 100) ? "ok" : "bad" }')
             [ "$ok" = "ok" ] || { echo "ERROR: $v is outside the sane range -100..100"; exit 1; }
         done
+        # Auto-derive position_min: needs to be at least (5 - y_offset)
+        # so probe can reach mesh_min Y=5. Add 1mm safety margin.
+        NEW_YMIN=$(awk -v y="$NEW_Y" 'BEGIN { v = 5 - y - 1; printf "%.1f", (v < -0.4) ? v : -0.4 }')
+        echo "  Derived position_min: $NEW_YMIN  (so probe can reach mesh_min Y=5)"
         LABEL='custom'
         ;;
     *) echo "cancelled"; exit 0 ;;
@@ -81,17 +91,20 @@ fi
 BACKUP="${CFG}.before-offset-$(date +%s)"
 cp "$CFG" "$BACKUP"
 
-awk -v nx="$NEW_X" -v ny="$NEW_Y" '
+awk -v nx="$NEW_X" -v ny="$NEW_Y" -v nymin="$NEW_YMIN" '
 BEGIN { section = "" }
 /^\[/ { section = $0; print; next }
 section == "[cartographer]" && /^x_offset:/ { print "x_offset: " nx; next }
 section == "[cartographer]" && /^y_offset:/ { print "y_offset: " ny; next }
+section == "[stepper_y]" && /^position_endstop:/ { print "position_endstop: " nymin; next }
+section == "[stepper_y]" && /^position_min:/ { print "position_min: " nymin; next }
 { print }
 ' "$CFG" > "${CFG}.new" && mv "${CFG}.new" "$CFG"
 
 echo
 echo "I: applied $LABEL"
-echo "I:   x_offset: $CURRENT_X → $NEW_X"
-echo "I:   y_offset: $CURRENT_Y → $NEW_Y"
+echo "I:   x_offset:           $CURRENT_X → $NEW_X"
+echo "I:   y_offset:           $CURRENT_Y → $NEW_Y"
+echo "I:   stepper_y position: → $NEW_YMIN  (endstop + min, to reach mesh corners)"
 echo "I: backup at $BACKUP"
-echo "I: active on next Klipper restart"
+echo "I: active on next Klipper restart (then power-cycle from mains before next G28)"
