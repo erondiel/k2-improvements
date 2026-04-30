@@ -11,9 +11,7 @@
 #   1. secure-auth — broken `grep -c PATTERN FILE -eq 0` syntax bypasses
 #      the safety check, disables password auth on printers without any
 #      authorized_keys -> user lockout.
-#   2. moonraker — install.sh removes /etc/rc.d/S*moonraker but never
-#      re-enables. After reboot, moonraker doesn't auto-start.
-#   3. better-root — link_up() does `ln -sfn /usr/share/moonraker
+#   2. better-root — link_up() does `ln -sfn /usr/share/moonraker
 #      moonraker` after rsync moves the real /root/moonraker dir into
 #      /mnt/UDISK/root/. ln fails ("File exists") because dest is a real
 #      directory, not a symlink. Cascades into a failed install.
@@ -38,71 +36,16 @@ PYEOF
     echo "I: patched secure-auth safety check"
 fi
 
-# ---- Fix 2: moonraker auto-start on boot (rc.d enable + rc.local hook) ----
-# Upstream removes /etc/rc.d/S*moonraker. We re-enable, AND we add a hook
-# in /etc/rc.local because procd's processing of rc.d/S* doesn't reliably
-# fire moonraker on K2 Plus boot (Klipper auto-starts fine, moonraker
-# doesn't — even with the symlink in place).
-MR="$D/features/moonraker/install.sh"
-if [ -f "$MR" ] && ! grep -q '/etc/init.d/moonraker enable' "$MR"; then
-    cat >> "$MR" <<'EOF'
+# Note: there's no auto-start patch needed for the 1.1.3.13 path —
+# Jacob's features/entware/install.sh correctly installs the unslung
+# boot hook (lines 85-88: cp unslung.init /etc/init.d/unslung +
+# rc.d/S99unslung symlink). On reboot, unslung runs all
+# /opt/etc/init.d/S* services including S56moonraker and S50cartographer.
+# Our installer (this repo) had to add the hook because we use a
+# streamlined Python-based Entware bootstrap that bypasses Jacob's
+# entware feature install.
 
-# erondiel-fix: ensure moonraker auto-starts on boot. Two-pronged:
-# 1) Re-enable rc.d/S56moonraker (upstream removed it earlier).
-# 2) Add a hook to /etc/rc.local (run at S95 by /etc/init.d/done) as
-#    a belt-and-braces fallback — procd's S56 firing is unreliable on
-#    K2 Plus.
-if [ -x /etc/init.d/moonraker ] && [ ! -e /etc/rc.d/S56moonraker ]; then
-    /etc/init.d/moonraker enable
-    echo "I: moonraker auto-start enabled (rc.d/S56moonraker)"
-fi
-if [ -f /etc/rc.local ] && ! grep -q 'erondiel-fix: moonraker auto-start' /etc/rc.local 2>/dev/null; then
-    python3 - <<'PYHOOK'
-path = '/etc/rc.local'
-with open(path) as f: content = f.read()
-hook = (
-    '\n# erondiel-fix: moonraker auto-start (procd boot of S56moonraker\n'
-    '# does not fire reliably on K2 Plus). Idempotent: only starts if not running.\n'
-    '[ -x /etc/init.d/moonraker ] && [ -z "$(pidof -x moonraker.py 2>/dev/null)" ] && /etc/init.d/moonraker start &\n'
-)
-if 'erondiel-fix: moonraker auto-start' not in content:
-    if '\nexit 0\n' in content:
-        content = content.replace('\nexit 0\n', hook + '\nexit 0\n', 1)
-    else:
-        content = content + hook
-    with open(path, 'w') as f: f.write(content)
-    print('I: moonraker auto-start hook added to /etc/rc.local')
-PYHOOK
-fi
-EOF
-    echo "I: patched moonraker auto-start (rc.d + rc.local hook)"
-fi
-
-# ---- Fix 4: cartographer USB-bridge auto-start (same procd issue) ----
-# The cartographer feature install creates /etc/init.d/cartographer (a
-# symlink to features/cartographer/cartographer.init) but its rc.d/S50
-# entry doesn't fire reliably on K2 Plus boot either. Add an rc.local
-# hook so /dev/cartographer gets created on boot.
-if [ -f /etc/rc.local ] && ! grep -q 'erondiel-fix: cartographer auto-start' /etc/rc.local 2>/dev/null; then
-    python3 - <<'PYCARTO'
-path = '/etc/rc.local'
-with open(path) as f: content = f.read()
-hook = (
-    '\n# erondiel-fix: cartographer USB-bridge auto-start (procd boot of\n'
-    '# S50cartographer is also unreliable on K2 Plus). Idempotent.\n'
-    '[ -x /etc/init.d/cartographer ] && [ ! -e /dev/cartographer ] && /etc/init.d/cartographer start &\n'
-)
-if 'erondiel-fix: cartographer auto-start' not in content:
-    if '\nexit 0\n' in content:
-        content = content.replace('\nexit 0\n', hook + '\nexit 0\n', 1)
-    else:
-        content = content + hook
-    with open(path, 'w') as f: f.write(content)
-    print('I: cartographer auto-start hook added to /etc/rc.local')
-PYCARTO
-fi
-
-# ---- Fix 3: better-root moonraker-symlink trap ----
+# ---- Fix 2: better-root moonraker-symlink trap ----
 BR="$D/features/better-root/install.sh"
 if [ -f "$BR" ] && grep -q 'ln -sfn /usr/share/moonraker' "$BR" && ! grep -q 'erondiel-fix:' "$BR"; then
     python3 - "$BR" <<'PYEOF'

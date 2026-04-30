@@ -196,6 +196,29 @@ remote "PATH=/opt/bin:/opt/sbin:\$PATH; \
         mkdir -p /mnt/UDISK/root; \
         ln -sfn /mnt/UDISK/k2-improvements /mnt/UDISK/root/k2-improvements"
 
+# Install the Entware unslung boot hook. Our streamlined Python-based
+# Entware install bypasses the official generic.sh installer, which is
+# what creates /etc/init.d/unslung (the script that runs all
+# /opt/etc/init.d/S* services at boot). Without this hook,
+# S56moonraker and S50cartographer never fire on boot and the printer
+# comes up with no API server and no probe — even though the services
+# are otherwise correctly installed.
+#
+# Use the same unslung.init that Jacob10383's features/entware/install.sh
+# uses, now that our cloned repo has it on the printer.
+echo "I: installing Entware unslung boot hook (so /opt/etc/init.d/S* fires on boot)"
+remote "set -e
+UNSLUNG_SRC=/mnt/UDISK/k2-improvements/features/entware/unslung.init
+if [ ! -f \$UNSLUNG_SRC ]; then
+    echo 'W:   unslung.init not found in cloned repo — skipping (Jacob10383 path supplies its own)'
+    exit 0
+fi
+cp \$UNSLUNG_SRC /etc/init.d/unslung
+chmod +x /etc/init.d/unslung
+ln -sf /etc/init.d/unslung /etc/rc.d/S99unslung
+ln -sf /etc/init.d/unslung /etc/rc.d/K01unslung
+echo 'I:   /etc/init.d/unslung installed; rc.d/S99unslung + K01unslung symlinked'"
+
 # If we routed to Jacob10383 upstream for a 1.1.3.13 install, apply our
 # portable bug-fixes BEFORE the user runs gimme-the-jamin.sh. Idempotent:
 # if Jacob accepts our PRs upstream, the patcher's matchers won't find
