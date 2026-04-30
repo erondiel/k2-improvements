@@ -79,8 +79,11 @@ install_feature() {
         if ! confirm "Install $name now?"; then return 0; fi
     fi
 
-    info "running $script"
-    if sh "$script"; then
+    # Force HOME from /etc/passwd — better-root may have changed root's
+    # home mid-session, but the menu shell's HOME is cached from login.
+    pwd_home=$(awk -F: '$1=="root"{print $6}' /etc/passwd)
+    info "running $name (HOME=$pwd_home)"
+    if HOME="$pwd_home" sh "$script"; then
         info "$name install completed"
     else
         warn "$name install.sh exited non-zero"
@@ -134,7 +137,8 @@ install_all_missing() {
             continue
         fi
 
-        if sh "$script"; then
+        pwd_home=$(awk -F: '$1=="root"{print $6}' /etc/passwd)
+        if HOME="$pwd_home" sh "$script"; then
             installed=$((installed+1))
         else
             warn "$name install.sh failed (continuing)"

@@ -27,9 +27,11 @@ if [ -z "$PRINTER_IP" ]; then
     exit 1
 fi
 
+SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR"
+
 if command -v sshpass >/dev/null 2>&1; then
-    SSH="sshpass -p $PASSWORD ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10"
-    SCP="sshpass -p $PASSWORD scp -O -o StrictHostKeyChecking=no"
+    SSH="sshpass -p $PASSWORD ssh $SSH_OPTS -o ConnectTimeout=10"
+    SCP="sshpass -p $PASSWORD scp -O $SSH_OPTS"
 else
     cat <<EOF
 NOTE: 'sshpass' is not installed on this PC, so SSH will prompt for the
@@ -38,8 +40,8 @@ NOTE: 'sshpass' is not installed on this PC, so SSH will prompt for the
         Linux/WSL: apt install sshpass
         Mac:       brew install hudochenkov/sshpass/sshpass
 EOF
-    SSH="ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10"
-    SCP="scp -O -o StrictHostKeyChecking=no"
+    SSH="ssh $SSH_OPTS -o ConnectTimeout=10"
+    SCP="scp -O $SSH_OPTS"
 fi
 
 remote() { $SSH "root@$PRINTER_IP" "$@"; }
@@ -137,7 +139,9 @@ remote "PATH=/opt/bin:/opt/sbin:\$PATH; \
                 echo I: existing flat tree moved aside; \
             fi; \
             git clone --branch $REPO_BRANCH $REPO_URL \$D; \
-        fi"
+        fi; \
+        mkdir -p /mnt/UDISK/root; \
+        ln -sfn /mnt/UDISK/k2-improvements /mnt/UDISK/root/k2-improvements"
 
 cat <<EOF
 

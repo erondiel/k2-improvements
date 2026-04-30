@@ -66,17 +66,15 @@ menu_install_all() {
             failed=$((failed+1))
             continue
         fi
-        # Re-read HOME from /etc/passwd before each script — better-root
-        # changes root's home mid-flow, but the running shell's HOME is
-        # cached from login. Subsequent scripts (cartographer etc.) hardcode
-        # ~/klippy-env, ${HOME}, etc., so they need the up-to-date value.
-        local fresh_home=$(grep '^root:' /etc/passwd | cut -d: -f6)
-        if [ -n "$fresh_home" ] && [ "$fresh_home" != "$HOME" ]; then
-            export HOME="$fresh_home"
-            info "HOME updated to $HOME"
-        fi
+        # Force HOME into the install script's env from current /etc/passwd.
+        # better-root mid-flow updates /etc/passwd, but the running menu
+        # shell's HOME is cached from SSH login (won't reflect the change),
+        # and child shells inherit that stale value. Setting HOME=... on
+        # the sh call overrides it for that one invocation.
+        pwd_home=$(awk -F: '$1=="root"{print $6}' /etc/passwd)
+        info "running $name (HOME=$pwd_home)"
 
-        if sh "$script"; then
+        if HOME="$pwd_home" sh "$script"; then
             installed=$((installed+1))
         else
             warn "$name install.sh failed (continuing)"
