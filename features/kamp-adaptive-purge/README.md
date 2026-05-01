@@ -55,7 +55,7 @@ The search box is the reliable way regardless of version.
 
 **Step 2 — Replace the machine start gcode**
 
-Printer profile (gear icon next to the printer profile) → **Machine G-code → Machine start G-code**. Replace the entire block with the K2 Plus version: see [`k2plus/slicer/creality-print-machine-start.gcode`](https://github.com/erondiel/printers/blob/main/k2plus/slicer/creality-print-machine-start.gcode) in the printers repo (or copy from the snippet below).
+Printer profile (gear icon next to the printer profile) → **Machine G-code → Machine start G-code**. Replace the entire block with the K2 Plus version: see [`slicer-templates/creality-print-machine-start.gcode`](slicer-templates/creality-print-machine-start.gcode).
 
 What changed from stock Creality Print machine start gcode:
 - Removed leading `M140 S0` / `M104 S0` — `START_PRINT` re-enables them immediately, so they were just noise.
@@ -92,23 +92,9 @@ Process tab (right panel) → **Quality → Advanced** → toggle **Label object
 
 **Step 2 — Machine start gcode**
 
-Printer settings (gear next to printer profile) → Machine G-code → Machine start G-code:
+Printer settings (gear next to printer profile) → Machine G-code → Machine start G-code → paste the contents of [`slicer-templates/orca-machine-start.gcode`](slicer-templates/orca-machine-start.gcode).
 
-```
-{if bed_type=="Custom"}
-START_PRINT EXTRUDER_TEMP=[nozzle_temperature_initial_layer] BED_TEMP=[bed_temperature_initial_layer_single] CHAMBER_TEMP=[chamber_temperature] MATERIAL={filament_type[initial_extruder]} SURFACE=coolplate
-{else}
-START_PRINT EXTRUDER_TEMP=[nozzle_temperature_initial_layer] BED_TEMP=[bed_temperature_initial_layer_single] CHAMBER_TEMP=[chamber_temperature] MATERIAL={filament_type[initial_extruder]} SURFACE=pei
-{endif}
-
-T[initial_extruder]
-M204 S2000
-M83
-M109 S[nozzle_temperature_initial_layer]
-LINE_PURGE
-```
-
-The exact `bed_type` strings depend on the bed types defined in your Orca K2 Plus profile — verify by slicing each plate type once and grepping the output `.gcode` for `; bed_type =` to see the literal string Orca emits.
+**Unverified:** the exact `bed_type` strings in the template depend on the bed types defined in your Orca K2 Plus profile. Slice each plate type once and grep the output `.gcode` for `; bed_type =` to see the literal string Orca emits, then adjust the conditional in the template if needed.
 
 ### Verification (both slicers)
 
