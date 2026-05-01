@@ -32,27 +32,99 @@ Small prints get short purges, large prints get long ones — no wasted filament
 
 ## Slicer change required
 
-After installing on the printer, edit your Creality Print **machine start gcode** and replace the hardcoded purge block with a single `LINE_PURGE` call. Find this in the `{else}` (single-color) branch near the bottom:
+KAMP needs three things from the slicer to work correctly:
+
+1. **"Label objects" must be ON** — `LINE_PURGE` reads the print's bbox from `[exclude_object]` polygons, which only get emitted when the slicer labels each object.
+2. **The hardcoded purge block in the machine start gcode must be replaced with `LINE_PURGE`.**
+3. **The nozzle must be at full print temperature before `LINE_PURGE` runs.** The standard Creality Print start gcode uses non-blocking `M104` to set temp; you need a blocking `M109` before `LINE_PURGE` or the purge fires while the nozzle is still heating.
+
+### Creality Print
+
+Verified on Creality Print 7.1.1.
+
+**Step 1 — Enable "Label objects"**
+
+Process settings panel (left sidebar) → search box at the top → type `label` → toggle **Label objects** ON.
+
+The setting moves between tabs across versions:
+- 7.x: Process settings → **Others** tab
+- Some 5.x/6.x builds: Quality → Advanced
+- Older builds: Printer settings → "Use exclude_object"
+
+The search box is the reliable way regardless of version.
+
+**Step 2 — Replace the machine start gcode**
+
+Printer profile (gear icon next to the printer profile) → **Machine G-code → Machine start G-code**. Replace the entire block with the K2 Plus version: see [`k2plus/slicer/creality-print-machine-start.gcode`](https://github.com/erondiel/printers/blob/main/k2plus/slicer/creality-print-machine-start.gcode) in the printers repo (or copy from the snippet below).
+
+What changed from stock Creality Print machine start gcode:
+- Removed leading `M140 S0` / `M104 S0` — `START_PRINT` re-enables them immediately, so they were just noise.
+- Removed the static `G1 X0 Y0 E9 ...` purge from both the `{if multicolor_method}` and `{else}` branches.
+- Added `M109 S[nozzle_temperature_initial_layer]` (blocking — waits for actual print temp) before `LINE_PURGE` in both branches. **Critical:** without this, the purge can fire while the nozzle is still heating because `START_PRINT` only sets the warm-up temp via M104.
+- Replaced the static purge with `LINE_PURGE`.
+
+Snippet of the changed section (full file is in the printers repo):
 
 ```
-G1 Y150 F12000
-G1 X0 F12000
-G1 Z0.2 F600
-G1 X0 Y150 F6000
-G1 E0.8 F300
-G1 X0 Y0 E9 F{filament_max_volumetric_speed[initial_extruder]/0.3*60}
-G1 X150 Y0 E9 F{filament_max_volumetric_speed[initial_extruder]/0.3*60}
-G92 E0
-G1 Z1 F600
+{if multicolor_method}
+... [existing multicolor flush + wipe sequence stays unchanged]
+M8200 O
+M204 S2000
+M83
+M109 S[nozzle_temperature_initial_layer]
+LINE_PURGE
+{else}
+T[initial_no_support_extruder]
+M204 S2000
+M83
+M109 S[nozzle_temperature_initial_layer]
+LINE_PURGE
+{endif}
 ```
 
-Replace with:
+### Orca / OrcaSlicer
+
+Orca uses different placeholder names from Creality Print (`bed_type` instead of `curr_bed_type`, etc.). The principle is identical — Label objects ON, replace the static purge with `LINE_PURGE`, blocking `M109` before purge.
+
+**Step 1 — Enable "Label objects"**
+
+Process tab (right panel) → **Quality → Advanced** → toggle **Label objects** ON. Some Orca builds expose it as **"Use exclude_object"** with the same effect.
+
+**Step 2 — Machine start gcode**
+
+Printer settings (gear next to printer profile) → Machine G-code → Machine start G-code:
 
 ```
+{if bed_type=="Custom"}
+START_PRINT EXTRUDER_TEMP=[nozzle_temperature_initial_layer] BED_TEMP=[bed_temperature_initial_layer_single] CHAMBER_TEMP=[chamber_temperature] MATERIAL={filament_type[initial_extruder]} SURFACE=coolplate
+{else}
+START_PRINT EXTRUDER_TEMP=[nozzle_temperature_initial_layer] BED_TEMP=[bed_temperature_initial_layer_single] CHAMBER_TEMP=[chamber_temperature] MATERIAL={filament_type[initial_extruder]} SURFACE=pei
+{endif}
+
+T[initial_extruder]
+M204 S2000
+M83
+M109 S[nozzle_temperature_initial_layer]
 LINE_PURGE
 ```
 
-Same change in the `{if multicolor_method}` branch — replace its trailing purge G1 block with `LINE_PURGE`.
+The exact `bed_type` strings depend on the bed types defined in your Orca K2 Plus profile — verify by slicing each plate type once and grepping the output `.gcode` for `; bed_type =` to see the literal string Orca emits.
+
+### Verification (both slicers)
+
+After slicing your test print, before sending to the printer, open the `.gcode` in a text editor and confirm:
+
+```bash
+head -100 sliced.gcode | grep -E "EXCLUDE_OBJECT_DEFINE|LINE_PURGE"
+```
+
+Expected output:
+- One `EXCLUDE_OBJECT_DEFINE NAME=... POLYGON=[[...]]` line per object on the plate — proves Label objects worked.
+- `LINE_PURGE` appears in the start block — proves the machine start gcode change took effect.
+
+Failure modes:
+- **No `EXCLUDE_OBJECT_DEFINE` lines** → "Label objects" is OFF (or named differently in your slicer build). `LINE_PURGE` will fall back to a static behavior at bed origin — same problem you started with.
+- **No `LINE_PURGE` line** → the machine start gcode change didn't save, or you're slicing under a different printer profile than the one you edited.
 
 ## Tuning
 
