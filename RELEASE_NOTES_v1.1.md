@@ -144,7 +144,8 @@ Or update an existing install via menu item **8. Update installer**.
 | v1.1.7 | `373895f` | Fixes bugs in v1.1.6's expect-based sshpass wrapper: argv handling, dropbear (y/n) regex, trap-masking-exit-code, wget fallback. Subsequent integration testing surfaced two more bugs that v1.1.7 missed — see v1.1.8. |
 | v1.1.8 | `a84d309` | Two more sshpass-expect wrapper fixes (log_user mixing + CRLF). Necessary fix for the wrapper logic itself, but doesn't reach users who have a stale wrapper from a previous run installed at /opt/bin/sshpass — see v1.1.9. |
 | v1.1.9 | `c194af8` | Bootstrap auto-refreshes a stale sshpass-expect wrapper from GitHub on every run when it detects our wrapper is already installed (via marker grep). Real sshpass binaries don't match the marker so the refresh logic doesn't touch them. |
-| v1.1.10 | (this release) | Adds a startup banner at the top of bootstrap.sh so the user sees immediate feedback after pasting the curl one-liner. Before this, bootstrap could sit silently for 5-10 seconds during self-heal download + opkg setup, easy to mistake for a frozen terminal. Banner suppressed on re-exec so curl-pipe users see it once, not twice. Reported by Dennis McKinney. |
+| v1.1.10 | `2badb87` | Adds a startup banner at the top of bootstrap.sh so the user sees immediate feedback after pasting the curl one-liner. Suggested by Dennis McKinney. |
+| v1.1.11 | (this release) | sshpass-expect wrapper had a 30s timeout that bailed during long-running SSH commands (git clone, opkg update over slow links). DiodeKing's run hit it during `git clone` of the extras dir. Fix: keep the 30s timeout pre-auth (catches password-prompt hangs) but lift to no-timeout post-auth so long commands run to completion. Verified: short commands still work, 35s sleep survives, auth failures still bail in ~1s. |
 
 ## Known issues
 

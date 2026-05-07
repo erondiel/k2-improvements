@@ -86,8 +86,11 @@ expect {
             timeout {}
         }
         # Auth phase done — turn output back on so bootstrap can capture
-        # the actual command output via $().
+        # the actual command output via $(), and lift the timeout so
+        # long-running commands (git clone, opkg update over slow links,
+        # etc.) don't trip a 30s wait.
         log_user 1
+        set timeout -1
         exp_continue
     }
     -nocase -re "passphrase" {
@@ -102,6 +105,7 @@ expect {
             timeout {}
         }
         log_user 1
+        set timeout -1
         exp_continue
     }
     # dropbear prompt: "Do you want to continue connecting? (y/n)" — answer "y"
