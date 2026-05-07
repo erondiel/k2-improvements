@@ -40,16 +40,22 @@ set -eu
 if [ ! -t 0 ] && [ "${BOOTSTRAP_REEXEC:-0}" = "0" ]; then
     SCRIPT_TMP=$(mktemp /tmp/bootstrap.XXXXXX.sh 2>/dev/null || echo "/tmp/bootstrap.$$.sh")
     SCRIPT_URL="${BOOTSTRAP_URL:-https://raw.githubusercontent.com/erondiel/k2-improvements/main/bootstrap.sh}"
+    DL_OK=0
     if command -v curl >/dev/null 2>&1 && curl -sSL "$SCRIPT_URL" -o "$SCRIPT_TMP" 2>/dev/null && [ -s "$SCRIPT_TMP" ]; then
+        DL_OK=1
+    elif command -v wget >/dev/null 2>&1 && wget -q -O "$SCRIPT_TMP" "$SCRIPT_URL" 2>/dev/null && [ -s "$SCRIPT_TMP" ]; then
+        DL_OK=1
+    fi
+    if [ "$DL_OK" = "1" ]; then
         export BOOTSTRAP_REEXEC=1
         exec sh "$SCRIPT_TMP" "$@"
     fi
     # Re-download failed; emit a clear actionable error instead of letting
     # the curl-pipe path silently break later.
     cat >&2 <<'EOF'
-ERROR: bootstrap is being piped from curl ("curl ... | sh"), but the
-self-rewrite to a temp file failed (curl wasn't found, or the
-re-download didn't work).
+ERROR: bootstrap is being piped from a download tool ("curl ... | sh"
+or "wget -O - ... | sh"), but the self-rewrite to a temp file failed
+(neither curl nor wget was found, or the re-download didn't work).
 
 On systems with the dropbear SSH client (BusyBox / K2 Plus printer
 shells) and without sshpass, the curl-pipe invocation causes silent
@@ -157,10 +163,20 @@ maybe_install_sshpass() {
             pm="opkg"
             cmd="opkg install sshpass"
         elif opkg list 2>/dev/null | grep -q "^expect "; then
-            # Install expect + drop our sshpass-expect wrapper at /opt/bin/sshpass
+            # Install expect + drop our sshpass-expect wrapper at /opt/bin/sshpass.
+            # K2 Plus stock has wget but not curl, so use whichever is available.
             local wrapper_url="${SSHPASS_WRAPPER_URL:-https://raw.githubusercontent.com/erondiel/k2-improvements/main/installer/scripts/sshpass-expect.sh}"
+            local dl_cmd=""
+            if command -v curl >/dev/null 2>&1; then
+                dl_cmd="curl -sSL '$wrapper_url' -o /opt/bin/sshpass"
+            elif command -v wget >/dev/null 2>&1; then
+                dl_cmd="wget -q -O /opt/bin/sshpass '$wrapper_url'"
+            else
+                echo "I: neither curl nor wget found — skipping expect-based sshpass fallback"
+                return 1
+            fi
             pm="opkg+expect (no native sshpass on this arch)"
-            cmd="opkg install expect && curl -sSL '$wrapper_url' -o /opt/bin/sshpass && chmod +x /opt/bin/sshpass"
+            cmd="opkg install expect && $dl_cmd && chmod +x /opt/bin/sshpass"
         fi
         # else: neither sshpass nor expect available; fall through (no prompt)
     elif command -v apt-get >/dev/null 2>&1; then
