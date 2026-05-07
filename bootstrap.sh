@@ -2,52 +2,66 @@
 # K2 Plus installer bootstrap — run on the USER'S PC, not on the printer.
 #
 # Usage:
-#   sh bootstrap.sh <printer-ip> [<password>] [--extras-only]
+#   sh bootstrap.sh <printer-ip> [<password>]
 #
-# What it does (default mode):
-#   1. SSH-tests the printer (needs root-SSH enabled via the on-screen disclaimer)
-#   2. Installs Entware on the printer if missing (piped over SSH from your PC,
-#      because stock K2 Plus has no wget or curl)
-#   3. Installs git/dialog/ca-bundle via opkg
-#   4. Detects firmware: 1.1.5.2 → erondiel/k2-improvements, 1.1.3.13 → Jacob10383
-#   5. git-clones the chosen installer into /mnt/UDISK/k2-improvements
-#   6. Tells you the next command to run
+# Single command for every user. Behavior is auto-detected:
+#   - 1.1.5.2 firmware (fresh or update)        -> erondiel/k2-improvements
+#   - 1.1.3.13 firmware, no existing install    -> Jacob10383/k2-improvements
+#   - 1.1.3.13 firmware, existing Jacob install -> ASK whether to add only
+#                                                  extras (KAMP, surface-
+#                                                  selection-wrapper,
+#                                                  cartographer-macros, etc.)
+#                                                  on top, or re-run the
+#                                                  full Jacob install
+#   - other firmware                            -> ask user
 #
-# --extras-only mode (for 1.1.3.13 users with Cartographer already installed
-# via Jacob10383, who want to add KAMP / surface-selection-wrapper /
-# cartographer-macros / etc. without touching the existing install):
-#   - Always uses erondiel/k2-improvements (the extras live there)
-#   - Clones to /mnt/UDISK/k2-improvements-extras/ (separate path; does not
-#     disturb any existing /mnt/UDISK/k2-improvements/ install)
-#   - Skips patch-jacob-fixes (those are for fresh 1.1.3.13 installs only)
-#   - Launches menu.sh with K2_EXTRAS_ONLY=1 so it shows only the safe items
-#     (Status, Extras, KAMP, Update) and hides Install-essentials / Features
-#     which would overwrite working Klipper patches
+# Extras-only mode (chosen automatically or via --extras-only) clones to
+# /mnt/UDISK/k2-improvements-extras/ as a sibling so the existing install
+# at /mnt/UDISK/k2-improvements/ is never touched.
+#
+# Power-user override flags (rarely needed, both skip the auto-detect prompt):
+#   --extras-only   force extras-only mode regardless of detected state
+#   --full          force full install regardless of detected state
 #
 # Idempotent — re-run any time to update.
 
 set -eu
 
 EXTRAS_ONLY=0
+EXTRAS_OVERRIDE=0   # set when user passes --extras-only or --full; skip auto-detect prompt
 PRINTER_IP=""
 PASSWORD="creality_2024"
 
-# Parse args (positional + --extras-only flag in any order)
+# Parse args (positional + flags in any order)
 while [ $# -gt 0 ]; do
     case "$1" in
         --extras-only)
             EXTRAS_ONLY=1
+            EXTRAS_OVERRIDE=1
+            shift
+            ;;
+        --full)
+            EXTRAS_ONLY=0
+            EXTRAS_OVERRIDE=1
             shift
             ;;
         -h|--help)
             cat <<'USAGE'
-usage: sh bootstrap.sh <printer-ip> [password] [--extras-only]
+usage: sh bootstrap.sh <printer-ip> [password] [--extras-only|--full]
 
-  --extras-only  Install only the K2-Plus extras (KAMP, surface-selection-
-                 wrapper, cartographer-macros, etc.) on top of an existing
-                 Cartographer install. Recommended for 1.1.3.13 users who
-                 already installed via Jacob10383/k2-improvements and want
-                 to add features without touching the working install.
+Single command for every user. Bootstrap auto-detects firmware and
+existing-install state and does the right thing — no flag needed for
+the common cases.
+
+Override flags (rare, both skip the auto-detect prompt):
+  --extras-only  Force extras-only mode. Clones to /mnt/UDISK/
+                 k2-improvements-extras/ and shows only KAMP / Extras
+                 / Status / Update in the menu. Useful for CI or for
+                 advanced users who know they want this.
+
+  --full         Force full install. Skips the auto-detect prompt and
+                 re-runs the firmware-routed flow. Useful if you want
+                 to reinstall over an existing install.
 USAGE
             exit 0
             ;;
@@ -78,8 +92,9 @@ CLONE_DIR=""
 LAUNCH_CMD=""
 
 if [ -z "$PRINTER_IP" ]; then
-    echo "usage: sh bootstrap.sh <printer-ip> [password] [--extras-only]"
+    echo "usage: sh bootstrap.sh <printer-ip> [password] [--extras-only|--full]"
     echo "  default password: creality_2024"
+    echo "  sh bootstrap.sh --help for details"
     exit 1
 fi
 
@@ -116,6 +131,43 @@ remote "true" || {
 # its own one-shot gimme-the-jamin.sh).
 echo "I: detecting printer firmware version"
 PRINTER_FW=$(remote "grep -oE 'sys = [0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' /mnt/UDISK/creality/userdata/log/upgrade-server.log 2>/dev/null | tail -1 | awk '{print \$3}'")
+
+# Auto-detect existing install at /mnt/UDISK/k2-improvements/ and ask
+# whether the user wants to add only extras, if the case is ambiguous.
+# Only fires for 1.1.3.13 + existing Jacob install when neither override
+# flag was passed. Everyone else flows through to current behavior.
+if [ "$EXTRAS_OVERRIDE" = "0" ] && [ "$PRINTER_FW" = "1.1.3.13" ]; then
+    echo "I: checking for existing install"
+    EXISTING=$(remote "[ -d /mnt/UDISK/k2-improvements/.git ] && \
+        grep -q 'Jacob10383' /mnt/UDISK/k2-improvements/.git/config 2>/dev/null && \
+        echo jacob || echo none")
+    if [ "$EXISTING" = "jacob" ]; then
+        echo ""
+        echo "I: detected existing Cartographer install at /mnt/UDISK/k2-improvements/"
+        echo "I:   (cloned from Jacob10383 — likely a working setup you want to keep)"
+        echo ""
+        echo "  You can either:"
+        echo "    1) Add only the K2-Plus extras (KAMP, surface-selection-wrapper,"
+        echo "       cartographer-macros, etc.) WITHOUT touching the existing install."
+        echo "       Recommended — safe, additive, leaves Cartographer working."
+        echo "    2) Re-run Jacob10383's full install (idempotent, but updates"
+        echo "       Klipper patches and may require a Klipper restart afterwards)."
+        echo ""
+        printf "Add extras only? [Y/n] "
+        read EXTRAS_CHOICE
+        case "$EXTRAS_CHOICE" in
+            n|N|no|NO)
+                EXTRAS_ONLY=0
+                echo "I:   continuing with full Jacob10383 re-install"
+                ;;
+            *)
+                EXTRAS_ONLY=1
+                echo "I:   extras-only mode — existing install will not be touched"
+                ;;
+        esac
+        echo ""
+    fi
+fi
 
 if [ "$EXTRAS_ONLY" = "1" ]; then
     # Extras-only mode: always use erondiel's repo, clone to a sibling path
