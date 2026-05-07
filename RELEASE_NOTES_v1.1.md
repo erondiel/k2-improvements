@@ -139,7 +139,8 @@ Or update an existing install via menu item **8. Update installer**.
 | v1.1.2 | `d702ba7` | Cartographer precondition guards in install scripts + bootstrap |
 | v1.1.3 | `804ece2` | Extras menu greys out items with unmet preconditions |
 | v1.1.4 | `2bb2c5e` | Bootstrap self-heals when piped from curl on systems without sshpass — fixes silent termination on dropbear (BusyBox / K2 Plus shells) where the SSH password prompt eats the rest of the script. Re-downloads to /tmp and re-execs with TTY stdin. |
-| v1.1.5 | (this release) | Bootstrap auto-installs sshpass via the host's package manager (opkg / apt / dnf / yum / pacman / brew) with a default-yes prompt — eliminates the ~10 password prompts per run on hosts where sshpass isn't pre-installed. Falls through to the existing warning if no package manager is detected (e.g. Git Bash on Windows). |
+| v1.1.5 | `b8d5359` | Bootstrap auto-installs sshpass via the host's package manager (opkg / apt / dnf / yum / pacman / brew) with a default-yes prompt — eliminates the ~10 password prompts per run on hosts where sshpass isn't pre-installed. Falls through to the existing warning if no package manager is detected (e.g. Git Bash on Windows). |
+| v1.1.6 | (this release) | Bootstrap detects `sshpass` is missing from the K2 Plus's Entware feed (armv7-3.2 doesn't ship it) and falls back to installing `expect` + an `expect`-based sshpass-equivalent shell wrapper. Reported by a 1.1.3.13 user testing the v1.1.5 auto-install path — the v1.1.5 prompt promised an install that opkg then refused with `Unknown package 'sshpass'`. Now the install only fires when the package is actually in the feed; otherwise the expect fallback is offered. |
 
 ## Known issues
 

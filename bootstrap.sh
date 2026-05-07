@@ -148,8 +148,21 @@ maybe_install_sshpass() {
 
     local pm="" cmd=""
     if command -v opkg >/dev/null 2>&1 && [ -d /opt/etc ]; then
-        pm="opkg"
-        cmd="opkg update >/dev/null 2>&1; opkg install sshpass"
+        # opkg architectures vary in what they ship. The K2 Plus's
+        # armv7-3.2 feed does NOT have sshpass, but it does have expect,
+        # which we can wrap to act as a drop-in sshpass replacement.
+        # Other archs may have sshpass directly. Check the feed first.
+        opkg update >/dev/null 2>&1 || true
+        if opkg list 2>/dev/null | grep -q "^sshpass "; then
+            pm="opkg"
+            cmd="opkg install sshpass"
+        elif opkg list 2>/dev/null | grep -q "^expect "; then
+            # Install expect + drop our sshpass-expect wrapper at /opt/bin/sshpass
+            local wrapper_url="${SSHPASS_WRAPPER_URL:-https://raw.githubusercontent.com/erondiel/k2-improvements/main/installer/scripts/sshpass-expect.sh}"
+            pm="opkg+expect (no native sshpass on this arch)"
+            cmd="opkg install expect && curl -sSL '$wrapper_url' -o /opt/bin/sshpass && chmod +x /opt/bin/sshpass"
+        fi
+        # else: neither sshpass nor expect available; fall through (no prompt)
     elif command -v apt-get >/dev/null 2>&1; then
         pm="apt"
         cmd="sudo apt-get update >/dev/null 2>&1 && sudo apt-get install -y sshpass"
