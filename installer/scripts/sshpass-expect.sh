@@ -50,7 +50,14 @@ cat > "$EXPECT_PROG" <<'EXPECT_EOF'
 # $argv = the SSH command + its args, passed in by the shell wrapper.
 # $env(SSHPASS_REPLACEMENT_PWD) = the password to feed.
 
-log_user 1
+# Silent during pre-auth phase (suppresses dropbear's "Ignoring unknown
+# configuration option" warnings, fingerprint prompts, and password prompt
+# itself) so bootstrap's $(remote "...") captures only the actual command
+# output. Without this, expect's pty merges ssh's stderr+stdout, and
+# log_user 1 would forward the merged stream to expect's stdout — which
+# gets captured by $() and contaminates the captured value with warning
+# text. Real sshpass keeps stderr separate; this is our equivalent.
+log_user 0
 set timeout 30
 
 # Build the spawn command from $argv. eval is required so spawn sees
@@ -71,6 +78,16 @@ expect {
             exit 5
         }
         send "$env(SSHPASS_REPLACEMENT_PWD)\r"
+        # Consume the line-terminator ssh outputs after our password input
+        # (it ends the masked-input line). Without this, the captured
+        # output via $(...) starts with a stray \n.
+        expect {
+            -re "\r?\n" {}
+            timeout {}
+        }
+        # Auth phase done — turn output back on so bootstrap can capture
+        # the actual command output via $().
+        log_user 1
         exp_continue
     }
     -nocase -re "passphrase" {
@@ -80,6 +97,11 @@ expect {
             exit 5
         }
         send "$env(SSHPASS_REPLACEMENT_PWD)\r"
+        expect {
+            -re "\r?\n" {}
+            timeout {}
+        }
+        log_user 1
         exp_continue
     }
     # dropbear prompt: "Do you want to continue connecting? (y/n)" — answer "y"
@@ -106,7 +128,18 @@ EXPECT_EOF
 chmod +x "$EXPECT_PROG"
 
 export SSHPASS_REPLACEMENT_PWD="$PASSWORD"
-expect -f "$EXPECT_PROG" "$@"
-EXIT_CODE=$?
-rm -f "$EXPECT_PROG"
-exit "$EXIT_CODE"
+
+# expect runs ssh in a pty, which CRLF-translates output. $() in shell
+# strips trailing \n but not \r, so a captured "1.1.5.2\r" wouldn't match
+# `case "$x" in 1.1.5.2)` literals. Pipe through tr to strip \r before
+# the caller sees the output. Capture exit code via a tmp file because
+# busybox ash lacks PIPESTATUS.
+EXIT_FILE=$(mktemp /tmp/sshpass-exit.XXXXXX 2>/dev/null || echo "/tmp/sshpass-exit.$$")
+{
+    expect -f "$EXPECT_PROG" "$@"
+    echo "$?" > "$EXIT_FILE"
+} | tr -d '\r'
+
+EXIT_CODE=$(cat "$EXIT_FILE" 2>/dev/null)
+rm -f "$EXPECT_PROG" "$EXIT_FILE"
+exit "${EXIT_CODE:-1}"
