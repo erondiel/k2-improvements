@@ -106,6 +106,7 @@ fi
 
 EXTRAS_ONLY=0
 EXTRAS_OVERRIDE=0   # set when user passes --extras-only or --full; skip auto-detect prompt
+TEST_JACOB=0        # --test-jacob: simulate a 1.1.3.13 + Jacob install for testing
 PRINTER_IP=""
 PASSWORD="creality_2024"
 
@@ -120,6 +121,15 @@ while [ $# -gt 0 ]; do
         --full)
             EXTRAS_ONLY=0
             EXTRAS_OVERRIDE=1
+            shift
+            ;;
+        --test-jacob)
+            TEST_JACOB=1
+            # In test mode, force PRINTER_IP=localhost so local-mode detection
+            # kicks in and we never SSH anywhere. Override unconditionally
+            # since test mode targets a fake env, not whatever IP the user
+            # may have typed.
+            PRINTER_IP="localhost"
             shift
             ;;
         -h|--help)
@@ -139,6 +149,16 @@ Override flags (rare, both skip the auto-detect prompt):
   --full         Force full install. Skips the auto-detect prompt and
                  re-runs the firmware-routed flow. Useful if you want
                  to reinstall over an existing install.
+
+  --test-jacob   Test mode: simulate a 1.1.3.13 printer with an
+                 existing Jacob10383 install (staged in /tmp). Forces
+                 local-mode (no SSH), forces PRINTER_FW=1.1.3.13,
+                 stages a fake Jacob install at /tmp/k2-test-jacob/,
+                 redirects clone destination to /tmp/k2-test-extras/,
+                 skips destructive operations (Entware install, opkg,
+                 unslung hook), and exits after the routing decision.
+                 Useful for verifying the auto-detect prompt + extras-
+                 only routing without a real 1.1.3.13 printer.
 USAGE
             exit 0
             ;;
@@ -392,8 +412,13 @@ fi
 # Our cartographer Klipper patches are rebased for 1.1.5.2; on 1.1.3.13 we
 # route to Jacob10383 upstream (which has the original 1.1.3.13 patches and
 # its own one-shot gimme-the-jamin.sh).
-echo "I: detecting printer firmware version"
-PRINTER_FW=$(remote "grep -oE 'sys = [0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' /mnt/UDISK/creality/userdata/log/upgrade-server.log 2>/dev/null | tail -1 | awk '{print \$3}'")
+if [ "$TEST_JACOB" = "1" ]; then
+    echo "I: [test-jacob] forcing firmware = 1.1.3.13 (skipping real probe)"
+    PRINTER_FW="1.1.3.13"
+else
+    echo "I: detecting printer firmware version"
+    PRINTER_FW=$(remote "grep -oE 'sys = [0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' /mnt/UDISK/creality/userdata/log/upgrade-server.log 2>/dev/null | tail -1 | awk '{print \$3}'")
+fi
 
 # Auto-detect an existing Jacob10383 install and ask whether the user
 # wants to add only extras, if the case is ambiguous. Only fires for
@@ -408,8 +433,21 @@ PRINTER_FW=$(remote "grep -oE 'sys = [0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' /mnt/UDISK/
 # is registered by Jacob's cartographer/install.sh and points at the actual
 # install directory regardless of which path convention was used.
 if [ "$EXTRAS_OVERRIDE" = "0" ] && [ "$PRINTER_FW" = "1.1.3.13" ]; then
-    echo "I: checking for existing install"
-    DETECTED_PATH=$(remote '
+    if [ "$TEST_JACOB" = "1" ]; then
+        # Stage a fake Jacob10383 install at /tmp so detection finds something.
+        TEST_JACOB_PATH="/tmp/k2-test-jacob-install"
+        echo "I: [test-jacob] staging fake Jacob10383 install at $TEST_JACOB_PATH"
+        rm -rf "$TEST_JACOB_PATH"
+        mkdir -p "$TEST_JACOB_PATH/.git"
+        cat > "$TEST_JACOB_PATH/.git/config" <<EOF
+[remote "origin"]
+        url = https://github.com/Jacob10383/k2-improvements.git
+        fetch = +refs/heads/*:refs/remotes/origin/*
+EOF
+        DETECTED_PATH="$TEST_JACOB_PATH"
+    else
+        echo "I: checking for existing install"
+        DETECTED_PATH=$(remote '
         # Try the two canonical paths first
         for d in /mnt/UDISK/k2-improvements /mnt/UDISK/root/k2-improvements; do
             if [ -d "$d/.git" ] && grep -q "Jacob10383" "$d/.git/config" 2>/dev/null; then
@@ -438,6 +476,7 @@ if [ "$EXTRAS_OVERRIDE" = "0" ] && [ "$PRINTER_FW" = "1.1.3.13" ]; then
         fi
         echo none
     ')
+    fi
     if [ -n "$DETECTED_PATH" ] && [ "$DETECTED_PATH" != "none" ]; then
         echo ""
         echo "I: detected existing Cartographer install at $DETECTED_PATH"
@@ -506,6 +545,9 @@ if [ "$EXTRAS_ONLY" = "1" ]; then
     # Extras-only mode: always use erondiel's repo, clone to a sibling path
     # so we don't disturb any existing /mnt/UDISK/k2-improvements/ install.
     echo "I:   extras-only mode — using erondiel/k2-improvements regardless of firmware"
+    if [ "$TEST_JACOB" = "1" ]; then
+        echo "I:   [test-jacob] redirecting clone destination to /tmp"
+    fi
     case "$PRINTER_FW" in
         1.1.3.13)
             echo "I:   firmware 1.1.3.13 detected — extras menu will load on top of"
@@ -567,6 +609,52 @@ else
             esac
             ;;
     esac
+fi
+
+# In test mode, redirect the clone destination from /mnt/UDISK/... to
+# /tmp/k2-test-... and exit early after printing the routing decision.
+# Skips the destructive Entware/opkg/clone/unslung-hook operations,
+# which would damage the developer's machine.
+if [ "$TEST_JACOB" = "1" ]; then
+    case "$CLONE_DIR" in
+        /mnt/UDISK/*) CLONE_DIR="/tmp/k2-test-${CLONE_DIR##*/}" ;;
+    esac
+    case "$LAUNCH_CMD" in
+        *"/mnt/UDISK/"*)
+            # Recompute LAUNCH_CMD with the new CLONE_DIR
+            case "$LAUNCH_CMD" in
+                "K2_EXTRAS_ONLY=1 "*) LAUNCH_CMD="K2_EXTRAS_ONLY=1 sh ${CLONE_DIR}/menu.sh" ;;
+                *menu.sh*)            LAUNCH_CMD="sh ${CLONE_DIR}/menu.sh" ;;
+                *gimme-the-jamin.sh*) LAUNCH_CMD="sh ${CLONE_DIR}/gimme-the-jamin.sh" ;;
+            esac
+            ;;
+    esac
+    echo ""
+    cat <<EOF
+==================================================================
+ [test-jacob mode] Routing decision summary
+
+ Detected firmware:     $PRINTER_FW (forced)
+ Existing install:      ${DETECTED_PATH:-(none)}
+ EXTRAS_ONLY mode:      $EXTRAS_ONLY
+ Repo URL:              $REPO_URL
+ Repo branch:           $REPO_BRANCH
+ Clone destination:     $CLONE_DIR  (redirected from /mnt/UDISK)
+ Launch command:        $LAUNCH_CMD
+
+ Test passed if:
+   - The "Add extras only? [Y/n]" prompt fired and accepted your input
+   - EXTRAS_ONLY matches what you chose (1 = yes, 0 = no)
+   - Clone destination is under /tmp/k2-test-...
+   - Launch command points to the /tmp path
+
+ Skipping: Entware install, opkg packages, git clone, unslung boot
+ hook, patch-jacob-fixes — these only make sense on a real printer.
+
+ Cleanup:  rm -rf /tmp/k2-test-* /tmp/bootstrap.*.sh
+==================================================================
+EOF
+    exit 0
 fi
 
 echo "I: checking Entware on printer"
