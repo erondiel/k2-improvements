@@ -712,6 +712,36 @@ EOF
  Cleanup:  rm -rf /tmp/k2-test-* /tmp/bootstrap.*.sh
 ==================================================================
 EOF
+
+    # Mirror the real-install launch logic so test mode can exercise
+    # both --auto-launch and the default-yes prompt path. The test
+    # clone landed at /tmp/k2-test-...-extras/, so menu.sh's path-
+    # based safeguard auto-detects extras-only mode just like a real
+    # extras install would.
+    if [ "$CLONE_OK" = "1" ]; then
+        if [ "${AUTO_LAUNCH:-0}" = "1" ]; then
+            if (: < /dev/tty) 2>/dev/null; then
+                echo "I: --auto-launch — launching menu..."
+                exec sh -c "$LAUNCH_CMD"
+            else
+                echo "W: --auto-launch but stdin isn't a TTY — skipping"
+            fi
+        elif (: < /dev/tty) 2>/dev/null; then
+            echo ""
+            printf "Launch the menu now? [Y/n] "
+            read TEST_LAUNCH_CHOICE
+            case "$TEST_LAUNCH_CHOICE" in
+                n|N|no|NO)
+                    echo "I: ok — run the command above when ready"
+                    ;;
+                *)
+                    echo "I: launching menu..."
+                    exec sh -c "$LAUNCH_CMD"
+                    ;;
+            esac
+        fi
+    fi
+
     exit 0
 fi
 
