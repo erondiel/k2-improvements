@@ -27,6 +27,45 @@
 
 set -eu
 
+# When this script is invoked via `curl -sSL ... | sh`, stdin is the curl
+# pipe — not a terminal. The K2 Plus's dropbear SSH client (and BusyBox in
+# general) reads password input from stdin if no TTY is properly attached,
+# which means the SSH password prompt eats the rest of this script as
+# password attempts and the bootstrap silently terminates.
+#
+# Self-heal by re-downloading to /tmp and re-execing from there, so the
+# new sh process inherits a real TTY for stdin. Skipped when stdin is
+# already a TTY (file invocation) or when we've already re-execed once
+# (prevents infinite recursion via BOOTSTRAP_REEXEC marker).
+if [ ! -t 0 ] && [ "${BOOTSTRAP_REEXEC:-0}" = "0" ]; then
+    SCRIPT_TMP=$(mktemp /tmp/bootstrap.XXXXXX.sh 2>/dev/null || echo "/tmp/bootstrap.$$.sh")
+    SCRIPT_URL="${BOOTSTRAP_URL:-https://raw.githubusercontent.com/erondiel/k2-improvements/main/bootstrap.sh}"
+    if command -v curl >/dev/null 2>&1 && curl -sSL "$SCRIPT_URL" -o "$SCRIPT_TMP" 2>/dev/null && [ -s "$SCRIPT_TMP" ]; then
+        export BOOTSTRAP_REEXEC=1
+        exec sh "$SCRIPT_TMP" "$@"
+    fi
+    # Re-download failed; emit a clear actionable error instead of letting
+    # the curl-pipe path silently break later.
+    cat >&2 <<'EOF'
+ERROR: bootstrap is being piped from curl ("curl ... | sh"), but the
+self-rewrite to a temp file failed (curl wasn't found, or the
+re-download didn't work).
+
+On systems with the dropbear SSH client (BusyBox / K2 Plus printer
+shells) and without sshpass, the curl-pipe invocation causes silent
+script termination during the SSH password prompt. The fix is to run
+this script from a file instead of stdin.
+
+Try:
+
+  curl -sSL https://raw.githubusercontent.com/erondiel/k2-improvements/main/bootstrap.sh \
+    -o /tmp/bootstrap.sh
+  sh /tmp/bootstrap.sh <printer-ip>
+
+EOF
+    exit 1
+fi
+
 EXTRAS_ONLY=0
 EXTRAS_OVERRIDE=0   # set when user passes --extras-only or --full; skip auto-detect prompt
 PRINTER_IP=""
