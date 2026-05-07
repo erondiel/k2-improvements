@@ -137,6 +137,76 @@ if [ -z "$PRINTER_IP" ]; then
     exit 1
 fi
 
+# If sshpass is missing, offer to install it via the host's package manager.
+# Without sshpass, every SSH call in this bootstrap fires its own password
+# prompt — ~10 prompts per run, which is annoying. Most hosts have a known
+# package manager (opkg on K2 Plus / Entware, apt on Debian/Ubuntu/WSL,
+# brew on macOS, etc.). If we can't detect one, fall through to the
+# existing warning and proceed with prompts.
+maybe_install_sshpass() {
+    command -v sshpass >/dev/null 2>&1 && return 0
+
+    local pm="" cmd=""
+    if command -v opkg >/dev/null 2>&1 && [ -d /opt/etc ]; then
+        pm="opkg"
+        cmd="opkg update >/dev/null 2>&1; opkg install sshpass"
+    elif command -v apt-get >/dev/null 2>&1; then
+        pm="apt"
+        cmd="sudo apt-get update >/dev/null 2>&1 && sudo apt-get install -y sshpass"
+    elif command -v dnf >/dev/null 2>&1; then
+        pm="dnf"
+        cmd="sudo dnf install -y sshpass"
+    elif command -v yum >/dev/null 2>&1; then
+        pm="yum"
+        cmd="sudo yum install -y sshpass"
+    elif command -v pacman >/dev/null 2>&1; then
+        pm="pacman"
+        cmd="sudo pacman -S --noconfirm sshpass"
+    elif command -v brew >/dev/null 2>&1; then
+        pm="brew"
+        cmd="brew install hudochenkov/sshpass/sshpass"
+    fi
+
+    if [ -z "$pm" ]; then
+        return 1
+    fi
+
+    echo ""
+    echo "I: sshpass is not installed."
+    echo "I:   Without it, the SSH password prompt fires for every command (~10 prompts per run)."
+    echo "I:   Detected package manager: $pm"
+    echo "I:   Would run: $cmd"
+    echo ""
+    printf "Install sshpass now? [Y/n] "
+    read SSHPASS_INSTALL_CHOICE
+    case "$SSHPASS_INSTALL_CHOICE" in
+        n|N|no|NO)
+            echo "I:   declined — continuing with password prompts"
+            return 1
+            ;;
+    esac
+
+    echo "I: installing sshpass..."
+    if sh -c "$cmd"; then
+        # Refresh PATH in case sshpass landed in a dir not yet in PATH
+        # (e.g., /opt/bin from opkg, /home/linuxbrew/.linuxbrew/bin from brew).
+        export PATH="/opt/bin:/opt/sbin:/usr/local/bin:$PATH"
+        if command -v sshpass >/dev/null 2>&1; then
+            echo "I: sshpass installed successfully"
+            return 0
+        else
+            echo "W: install command succeeded but sshpass not in PATH — falling back to password prompts"
+            return 1
+        fi
+    else
+        echo "W: sshpass install failed — falling back to password prompts"
+        return 1
+    fi
+}
+
+maybe_install_sshpass || true
+echo ""
+
 SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR"
 
 if command -v sshpass >/dev/null 2>&1; then
@@ -144,11 +214,12 @@ if command -v sshpass >/dev/null 2>&1; then
     SCP="sshpass -p $PASSWORD scp -O $SSH_OPTS"
 else
     cat <<EOF
-NOTE: 'sshpass' is not installed on this PC, so SSH will prompt for the
-      printer password ($PASSWORD by default) on each step. Install sshpass
-      to skip the prompts:
+NOTE: 'sshpass' is not available — SSH will prompt for the printer
+      password ($PASSWORD by default) on every step. Manual install:
         Linux/WSL: apt install sshpass
         Mac:       brew install hudochenkov/sshpass/sshpass
+        K2 Plus:   opkg install sshpass
+        Other:     https://github.com/kevinburke/sshpass#installation
 EOF
     SSH="ssh $SSH_OPTS -o ConnectTimeout=10"
     SCP="scp -O $SSH_OPTS"
