@@ -132,18 +132,52 @@ remote "true" || {
 echo "I: detecting printer firmware version"
 PRINTER_FW=$(remote "grep -oE 'sys = [0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' /mnt/UDISK/creality/userdata/log/upgrade-server.log 2>/dev/null | tail -1 | awk '{print \$3}'")
 
-# Auto-detect existing install at /mnt/UDISK/k2-improvements/ and ask
-# whether the user wants to add only extras, if the case is ambiguous.
-# Only fires for 1.1.3.13 + existing Jacob install when neither override
-# flag was passed. Everyone else flows through to current behavior.
+# Auto-detect an existing Jacob10383 install and ask whether the user
+# wants to add only extras, if the case is ambiguous. Only fires for
+# 1.1.3.13 when neither override flag was passed. Everyone else flows
+# through to current behavior.
+#
+# Detection probes both common install paths:
+#   /mnt/UDISK/k2-improvements/             (our convention; symlink target)
+#   /mnt/UDISK/root/k2-improvements/        (Jacob's ~/k2-improvements/ after
+#                                            better-root sets HOME=/mnt/UDISK/root)
+# Plus a fallback: a moonraker.conf [update_manager k2-improvements] block
+# is registered by Jacob's cartographer/install.sh and points at the actual
+# install directory regardless of which path convention was used.
 if [ "$EXTRAS_OVERRIDE" = "0" ] && [ "$PRINTER_FW" = "1.1.3.13" ]; then
     echo "I: checking for existing install"
-    EXISTING=$(remote "[ -d /mnt/UDISK/k2-improvements/.git ] && \
-        grep -q 'Jacob10383' /mnt/UDISK/k2-improvements/.git/config 2>/dev/null && \
-        echo jacob || echo none")
-    if [ "$EXISTING" = "jacob" ]; then
+    DETECTED_PATH=$(remote '
+        # Try the two canonical paths first
+        for d in /mnt/UDISK/k2-improvements /mnt/UDISK/root/k2-improvements; do
+            if [ -d "$d/.git" ] && grep -q "Jacob10383" "$d/.git/config" 2>/dev/null; then
+                # Resolve symlinks to the real path
+                resolved=$(readlink -f "$d" 2>/dev/null || echo "$d")
+                echo "$resolved"
+                exit 0
+            fi
+        done
+        # Fallback: parse moonraker.conf for k2-improvements update_manager block
+        cfg=/mnt/UDISK/printer_data/config/moonraker.conf
+        if [ -f "$cfg" ]; then
+            mr_path=$(awk "/\\[update_manager k2-improvements\\]/,/\\[/" "$cfg" 2>/dev/null \
+                | grep -E "^\\s*path:" | head -1 | sed -E "s/^\\s*path:\\s*//; s/\\s+$//")
+            if [ -n "$mr_path" ]; then
+                # Expand ~ if present
+                case "$mr_path" in
+                    "~"|"~/"*) mr_path="$HOME/${mr_path#~/}" ;;
+                esac
+                if [ -d "$mr_path/.git" ] && grep -q "Jacob10383" "$mr_path/.git/config" 2>/dev/null; then
+                    resolved=$(readlink -f "$mr_path" 2>/dev/null || echo "$mr_path")
+                    echo "$resolved"
+                    exit 0
+                fi
+            fi
+        fi
+        echo none
+    ')
+    if [ -n "$DETECTED_PATH" ] && [ "$DETECTED_PATH" != "none" ]; then
         echo ""
-        echo "I: detected existing Cartographer install at /mnt/UDISK/k2-improvements/"
+        echo "I: detected existing Cartographer install at $DETECTED_PATH"
         echo "I:   (cloned from Jacob10383 — likely a working setup you want to keep)"
         echo ""
         echo "  You can either:"
