@@ -150,7 +150,32 @@ fi
 # brew on macOS, etc.). If we can't detect one, fall through to the
 # existing warning and proceed with prompts.
 maybe_install_sshpass() {
-    command -v sshpass >/dev/null 2>&1 && return 0
+    if command -v sshpass >/dev/null 2>&1; then
+        # If sshpass is already in PATH, check whether it's our expect-based
+        # wrapper. If so, refresh it from GitHub on every bootstrap run so
+        # users with stale wrappers from earlier versions pick up bug fixes
+        # without having to delete the old file manually.
+        local sshpass_path wrapper_marker wrapper_url dl_cmd
+        sshpass_path=$(command -v sshpass)
+        wrapper_marker="sshpass-equivalent using"   # comes from the wrapper's header comment
+        if [ -f "$sshpass_path" ] && grep -q "$wrapper_marker" "$sshpass_path" 2>/dev/null; then
+            wrapper_url="${SSHPASS_WRAPPER_URL:-https://raw.githubusercontent.com/erondiel/k2-improvements/main/installer/scripts/sshpass-expect.sh}"
+            if command -v curl >/dev/null 2>&1; then
+                dl_cmd="curl -sSL '$wrapper_url' -o '$sshpass_path'"
+            elif command -v wget >/dev/null 2>&1; then
+                dl_cmd="wget -q -O '$sshpass_path' '$wrapper_url'"
+            else
+                dl_cmd=""
+            fi
+            if [ -n "$dl_cmd" ]; then
+                if sh -c "$dl_cmd" 2>/dev/null && [ -s "$sshpass_path" ]; then
+                    chmod +x "$sshpass_path" 2>/dev/null
+                    echo "I: refreshed sshpass-expect wrapper at $sshpass_path (carries any fixes shipped since your previous install)"
+                fi
+            fi
+        fi
+        return 0
+    fi
 
     local pm="" cmd=""
     if command -v opkg >/dev/null 2>&1 && [ -d /opt/etc ]; then
