@@ -637,12 +637,16 @@ if [ "$TEST_JACOB" = "1" ]; then
     if command -v git >/dev/null 2>&1; then
         echo ""
         echo "I: [test-jacob] cloning $REPO_URL ($REPO_BRANCH) to $CLONE_DIR"
+        echo "I: [test-jacob] (this can take 1-3 minutes on slow networks; progress shown below)"
         rm -rf "$CLONE_DIR" 2>/dev/null
-        if git clone --depth=1 --branch "$REPO_BRANCH" "$REPO_URL" "$CLONE_DIR" 2>&1 | tail -3; then
+        # `--progress` forces git to show progress when stderr isn't a TTY.
+        # Don't pipe through tail/head — that buffers until clone completes
+        # and looks like a hang.
+        if git clone --progress --depth=1 --branch "$REPO_BRANCH" "$REPO_URL" "$CLONE_DIR"; then
             CLONE_OK=1
             echo "I: [test-jacob] clone successful"
         else
-            echo "W: [test-jacob] clone failed — see error above. Routing summary still printed below."
+            echo "W: [test-jacob] clone failed (network issue?). Routing summary still printed below."
         fi
     else
         echo "W: [test-jacob] git not found — skipping clone (only routing summary, no menu.sh to launch)"
