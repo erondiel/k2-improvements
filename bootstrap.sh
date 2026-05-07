@@ -107,6 +107,7 @@ fi
 EXTRAS_ONLY=0
 EXTRAS_OVERRIDE=0   # set when user passes --extras-only or --full; skip auto-detect prompt
 TEST_JACOB=0        # --test-jacob: simulate a 1.1.3.13 + Jacob install for testing
+AUTO_LAUNCH=0       # --auto-launch: skip post-install prompt, exec menu directly
 PRINTER_IP=""
 PASSWORD="creality_2024"
 
@@ -130,6 +131,10 @@ while [ $# -gt 0 ]; do
             # since test mode targets a fake env, not whatever IP the user
             # may have typed.
             PRINTER_IP="localhost"
+            shift
+            ;;
+        --auto-launch)
+            AUTO_LAUNCH=1
             shift
             ;;
         -h|--help)
@@ -159,6 +164,13 @@ Override flags (rare, both skip the auto-detect prompt):
                  unslung hook), and exits after the routing decision.
                  Useful for verifying the auto-detect prompt + extras-
                  only routing without a real 1.1.3.13 printer.
+
+  --auto-launch  Skip the post-install "Launch the menu now? [Y/n]"
+                 prompt and exec the menu directly. In local-mode the
+                 menu runs in the current shell; in SSH-from-PC mode
+                 bootstrap opens an SSH session to the printer with
+                 a TTY allocated for the menu. Useful for one-shot
+                 install-and-go workflows.
 USAGE
             exit 0
             ;;
@@ -950,10 +962,34 @@ ${LAUNCH_INSTRUCTIONS}
 EOF
 fi
 
-# Offer to auto-launch the menu — only in local-mode (clean exec) and
-# only when stdin is interactive (avoid hanging non-interactive runs).
-# Default yes; user just presses Enter to proceed.
-if [ "${LOCAL_MODE:-0}" = "1" ] && (: < /dev/tty) 2>/dev/null; then
+# Post-install menu launch:
+#
+#   --auto-launch passed: exec the menu unconditionally. In local-mode
+#                         the menu runs in the current shell; in
+#                         SSH-from-PC mode we open an SSH session with
+#                         -t (TTY allocated) so the menu is interactive.
+#   default (no flag):    only prompt in local-mode (where the launch
+#                         is a clean local exec). SSH-from-PC mode is
+#                         left alone — users typically prefer to SSH in
+#                         fresh themselves rather than nesting through
+#                         the bootstrap's SSH plumbing.
+#
+# Both paths skip if stdin isn't a TTY (avoid hanging non-interactive runs).
+if [ "${AUTO_LAUNCH:-0}" = "1" ]; then
+    if ! (: < /dev/tty) 2>/dev/null; then
+        echo "W: --auto-launch passed but stdin isn't a TTY — skipping (need interactive shell)"
+    elif [ "${LOCAL_MODE:-0}" = "1" ]; then
+        echo "I: --auto-launch — launching menu..."
+        exec sh -c "$LAUNCH_CMD"
+    else
+        echo "I: --auto-launch — opening menu over SSH (a TTY will be allocated)..."
+        # `-t` forces ssh to allocate a pseudo-terminal on the remote so
+        # the menu is interactive. exec replaces this process with the
+        # SSH session, so when the user exits the menu they return to
+        # their local shell.
+        exec $SSH -t "root@$PRINTER_IP" "$LAUNCH_CMD"
+    fi
+elif [ "${LOCAL_MODE:-0}" = "1" ] && (: < /dev/tty) 2>/dev/null; then
     echo ""
     printf "Launch the menu now? [Y/n] "
     read LAUNCH_NOW_CHOICE
