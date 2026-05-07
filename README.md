@@ -6,14 +6,24 @@ Interactive TUI installer for the K2 Plus on stock Creality firmware. Builds on 
 
 ## Quick install
 
-**Single command for every user.** From your PC's terminal (Linux / Mac / WSL / Git Bash on Windows):
+**Single command for every user.** From your PC's terminal (Linux / Mac / WSL / Git Bash on Windows / MobaXterm), or directly from your printer's shell — whichever's easier. Use whichever of `curl` or `wget` is on your system:
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/erondiel/k2-improvements/main/bootstrap.sh \
-  | sh -s -- <printer-ip>
+# with curl:
+curl -sSL https://raw.githubusercontent.com/erondiel/k2-improvements/main/bootstrap.sh | sh -s -- <printer-ip>
+
+# with wget (K2 Plus shells default to wget, no curl):
+wget -qO- https://raw.githubusercontent.com/erondiel/k2-improvements/main/bootstrap.sh | sh -s -- <printer-ip>
 ```
 
-Or if you'd rather have the source locally first:
+Running it from inside the printer? Pass `localhost` as the IP — bootstrap detects "I'm on the target" and skips SSH entirely (no password prompts, faster, no auth setup):
+
+```bash
+ssh root@<printer-ip>
+wget -qO- https://raw.githubusercontent.com/erondiel/k2-improvements/main/bootstrap.sh | sh -s -- localhost
+```
+
+If you'd rather have the source locally first:
 
 ```bash
 git clone https://github.com/erondiel/k2-improvements.git
