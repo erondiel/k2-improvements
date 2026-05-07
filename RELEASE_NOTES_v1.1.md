@@ -148,7 +148,8 @@ Or update an existing install via menu item **8. Update installer**.
 | v1.1.11 | `73ca606` | sshpass-expect wrapper 30s timeout was bailing during long-running SSH commands (git clone, opkg update). Lifted post-auth so long commands run to completion. Pre-auth timeout still active to catch password-prompt hangs. |
 | v1.1.12 | `2a0e11e` | Self-heal re-exec re-attaches stdin to `/dev/tty` so interactive prompts wait for keyboard input. Falls back to no-redirect on headless environments. |
 | v1.1.13 | `14c2967` | **Local-mode detection.** When bootstrap is invoked on the printer itself (PRINTER_IP matches localhost / 127.0.0.1 / local interface / hostname), `remote()` runs commands locally instead of via SSH. Skips dropbear / sshpass / wrapper / password-prompt chain entirely. |
-| v1.1.14 | (this release) | Adds a `--test-jacob` flag for testing the 1.1.3.13 + Jacob auto-detect prompt without a real 1.1.3.13 printer. Forces local-mode, forces `PRINTER_FW=1.1.3.13`, stages a fake Jacob install at `/tmp/k2-test-jacob-install/`, redirects clone destination to `/tmp/k2-test-...`, exercises the auto-detect prompt + extras-only routing, then exits with a routing-decision summary before the destructive Entware/opkg/clone/unslung steps would fire. Lets developers verify the full prompt + routing flow end-to-end on any machine. |
+| v1.1.14 | `0f5ca48` | `--test-jacob` flag: simulates 1.1.3.13 + Jacob install for testing the auto-detect prompt without real hardware. |
+| v1.1.15 | (this release) | `--test-jacob` now also performs the git clone (to `/tmp/k2-test-...`) so the user can actually launch `menu.sh` afterwards and see the extras menu. Skips only the genuinely-destructive operations (Entware, opkg, unslung hook, patch-jacob-fixes). The summary at the end now says `Clone done: yes/no` and prints the exact launch command to run for the next step. |
 
 ## Known issues
 

@@ -629,6 +629,25 @@ if [ "$TEST_JACOB" = "1" ]; then
             esac
             ;;
     esac
+    # Do the git clone in test mode too — harmless to /tmp, and lets the
+    # user actually launch menu.sh afterwards to see the extras experience.
+    # Only Entware/opkg/unslung/patch-jacob-fixes are skipped (those are
+    # destructive on the dev box).
+    CLONE_OK=0
+    if command -v git >/dev/null 2>&1; then
+        echo ""
+        echo "I: [test-jacob] cloning $REPO_URL ($REPO_BRANCH) to $CLONE_DIR"
+        rm -rf "$CLONE_DIR" 2>/dev/null
+        if git clone --depth=1 --branch "$REPO_BRANCH" "$REPO_URL" "$CLONE_DIR" 2>&1 | tail -3; then
+            CLONE_OK=1
+            echo "I: [test-jacob] clone successful"
+        else
+            echo "W: [test-jacob] clone failed — see error above. Routing summary still printed below."
+        fi
+    else
+        echo "W: [test-jacob] git not found — skipping clone (only routing summary, no menu.sh to launch)"
+    fi
+
     echo ""
     cat <<EOF
 ==================================================================
@@ -640,16 +659,28 @@ if [ "$TEST_JACOB" = "1" ]; then
  Repo URL:              $REPO_URL
  Repo branch:           $REPO_BRANCH
  Clone destination:     $CLONE_DIR  (redirected from /mnt/UDISK)
+ Clone done:            $([ "$CLONE_OK" = "1" ] && echo yes || echo no)
  Launch command:        $LAUNCH_CMD
 
  Test passed if:
    - The "Add extras only? [Y/n]" prompt fired and accepted your input
    - EXTRAS_ONLY matches what you chose (1 = yes, 0 = no)
    - Clone destination is under /tmp/k2-test-...
-   - Launch command points to the /tmp path
+   - Clone done is "yes" (if git was available)
 
- Skipping: Entware install, opkg packages, git clone, unslung boot
- hook, patch-jacob-fixes — these only make sense on a real printer.
+EOF
+    if [ "$CLONE_OK" = "1" ]; then
+        cat <<EOF
+ Next step: run the menu.sh you just got — should show the extras
+ menu (Status / Extras / KAMP / Update) for your test:
+
+     $LAUNCH_CMD
+
+EOF
+    fi
+    cat <<EOF
+ Skipping: Entware install, opkg packages, unslung boot hook, patch-
+ jacob-fixes — these only make sense on a real printer.
 
  Cleanup:  rm -rf /tmp/k2-test-* /tmp/bootstrap.*.sh
 ==================================================================
