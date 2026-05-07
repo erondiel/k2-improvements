@@ -54,10 +54,19 @@ fi
 if [ ! -t 0 ] && [ "${BOOTSTRAP_REEXEC:-0}" = "0" ]; then
     SCRIPT_TMP=$(mktemp /tmp/bootstrap.XXXXXX.sh 2>/dev/null || echo "/tmp/bootstrap.$$.sh")
     SCRIPT_URL="${BOOTSTRAP_URL:-https://raw.githubusercontent.com/erondiel/k2-improvements/main/bootstrap.sh}"
+    echo "I: downloading installer to $SCRIPT_TMP (connect timeout 30s, total timeout 60s)..."
     DL_OK=0
-    if command -v curl >/dev/null 2>&1 && curl -sSL "$SCRIPT_URL" -o "$SCRIPT_TMP" 2>/dev/null && [ -s "$SCRIPT_TMP" ]; then
+    # Explicit timeouts on both tools so a stalled connection (transient
+    # GitHub slowness, rate limit, slow DNS) fails fast with a clear
+    # error instead of hanging indefinitely. busybox wget on the printer
+    # supports -T (network-activity timeout in seconds).
+    if command -v curl >/dev/null 2>&1 && \
+       curl -sSL --connect-timeout 30 --max-time 60 "$SCRIPT_URL" -o "$SCRIPT_TMP" 2>/dev/null && \
+       [ -s "$SCRIPT_TMP" ]; then
         DL_OK=1
-    elif command -v wget >/dev/null 2>&1 && wget -q -O "$SCRIPT_TMP" "$SCRIPT_URL" 2>/dev/null && [ -s "$SCRIPT_TMP" ]; then
+    elif command -v wget >/dev/null 2>&1 && \
+         wget -q -T 30 -O "$SCRIPT_TMP" "$SCRIPT_URL" 2>/dev/null && \
+         [ -s "$SCRIPT_TMP" ]; then
         DL_OK=1
     fi
     if [ "$DL_OK" = "1" ]; then
