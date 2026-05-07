@@ -876,11 +876,38 @@ if [ "$EXTRAS_ONLY" = "0" ] && [ "$REPO_URL" = "$REPO_URL_1313" ]; then
     fi
 fi
 
+# ANSI color codes for visual emphasis on the launch command. Same
+# treatment as the --test-jacob summary so the next-step action is
+# unmistakable. Degrades gracefully on non-ANSI terminals (escapes
+# render as their literal bytes — rare and harmless).
+ESC=$(printf '\033')
+C_BOLD="${ESC}[1m"
+C_CYAN="${ESC}[1;36m"
+C_RESET="${ESC}[0m"
+
+# In local-mode the user is already on the printer, so the
+# `ssh root@host` line is just noise — they'd run the menu command
+# directly. Pick the right "how to launch" prose per mode.
+if [ "${LOCAL_MODE:-0}" = "1" ]; then
+    LAUNCH_INSTRUCTIONS=" Run this to start the menu:
+
+   ${C_CYAN}${LAUNCH_CMD}${C_RESET}"
+else
+    LAUNCH_INSTRUCTIONS=" To start the menu, SSH in and run:
+
+   ssh root@${PRINTER_IP}
+   ${C_CYAN}${LAUNCH_CMD}${C_RESET}
+
+ Or one-line:
+
+   ${C_CYAN}ssh root@${PRINTER_IP} '${LAUNCH_CMD}'${C_RESET}"
+fi
+
 if [ "$EXTRAS_ONLY" = "1" ]; then
     cat <<EOF
 
 ==================================================================
- Bootstrap complete (extras-only mode).
+ ${C_BOLD}Bootstrap complete (extras-only mode).${C_RESET}
 
  Source:           $REPO_URL ($REPO_BRANCH branch)
  Cloned to:        $CLONE_DIR
@@ -889,14 +916,7 @@ if [ "$EXTRAS_ONLY" = "1" ]; then
  Your existing Cartographer install at /mnt/UDISK/k2-improvements/
  (if any) was NOT touched.
 
- To start the extras menu, SSH in and run:
-
-   ssh root@$PRINTER_IP
-   $LAUNCH_CMD
-
- Or one-line:
-
-   ssh root@$PRINTER_IP '$LAUNCH_CMD'
+${LAUNCH_INSTRUCTIONS}
 
  The menu shows only Status / Extras / KAMP / Update — items that
  are safe cross-firmware. Install-essentials and the Features menu
@@ -907,20 +927,13 @@ else
     cat <<EOF
 
 ==================================================================
- Bootstrap complete.
+ ${C_BOLD}Bootstrap complete.${C_RESET}
 
  Source: $REPO_URL ($REPO_BRANCH branch)
  Cloned to: $CLONE_DIR
  Detected firmware: ${PRINTER_FW:-unknown}
 
- To start the installer, SSH in and run:
-
-   ssh root@$PRINTER_IP
-   $LAUNCH_CMD
-
- Or one-line:
-
-   ssh root@$PRINTER_IP '$LAUNCH_CMD'
+${LAUNCH_INSTRUCTIONS}
 ==================================================================
 EOF
 fi
