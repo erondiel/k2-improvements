@@ -62,7 +62,25 @@ if [ ! -t 0 ] && [ "${BOOTSTRAP_REEXEC:-0}" = "0" ]; then
     fi
     if [ "$DL_OK" = "1" ]; then
         export BOOTSTRAP_REEXEC=1
-        exec sh "$SCRIPT_TMP" "$@"
+        # Re-attach stdin to the controlling terminal. Without this, the
+        # re-execed sh inherits the (now-closed) curl/wget pipe as its
+        # stdin, and every `read` for an interactive prompt returns
+        # immediately with empty input — bootstrap's "Add extras only?
+        # [Y/n]" and firmware-version chooser silently pick defaults
+        # without giving the user a chance to type. /dev/tty is the
+        # controlling terminal, which is intact across the re-exec.
+        #
+        # `[ -e /dev/tty ]` isn't sufficient — the device file exists in
+        # most environments, but actually opening it fails in CI / docker-
+        # without-tty / other non-controlling-terminal contexts. Try the
+        # open in a subshell and only redirect if it succeeds.
+        if (: < /dev/tty) 2>/dev/null; then
+            exec sh "$SCRIPT_TMP" "$@" </dev/tty
+        else
+            # Headless / no controlling tty — proceed without stdin
+            # redirect. Prompts will pick defaults.
+            exec sh "$SCRIPT_TMP" "$@"
+        fi
     fi
     # Re-download failed; emit a clear actionable error instead of letting
     # the curl-pipe path silently break later.

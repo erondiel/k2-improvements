@@ -145,7 +145,8 @@ Or update an existing install via menu item **8. Update installer**.
 | v1.1.8 | `a84d309` | Two more sshpass-expect wrapper fixes (log_user mixing + CRLF). Necessary fix for the wrapper logic itself, but doesn't reach users who have a stale wrapper from a previous run installed at /opt/bin/sshpass — see v1.1.9. |
 | v1.1.9 | `c194af8` | Bootstrap auto-refreshes a stale sshpass-expect wrapper from GitHub on every run when it detects our wrapper is already installed (via marker grep). Real sshpass binaries don't match the marker so the refresh logic doesn't touch them. |
 | v1.1.10 | `2badb87` | Adds a startup banner at the top of bootstrap.sh so the user sees immediate feedback after pasting the curl one-liner. Suggested by Dennis McKinney. |
-| v1.1.11 | (this release) | sshpass-expect wrapper had a 30s timeout that bailed during long-running SSH commands (git clone, opkg update over slow links). DiodeKing's run hit it during `git clone` of the extras dir. Fix: keep the 30s timeout pre-auth (catches password-prompt hangs) but lift to no-timeout post-auth so long commands run to completion. Verified: short commands still work, 35s sleep survives, auth failures still bail in ~1s. |
+| v1.1.11 | `73ca606` | sshpass-expect wrapper 30s timeout was bailing during long-running SSH commands (git clone, opkg update). Lifted post-auth so long commands run to completion. Pre-auth timeout still active to catch password-prompt hangs. |
+| v1.1.12 | (this release) | Self-heal re-exec now re-attaches stdin to `/dev/tty` so interactive prompts (`Add extras only? [Y/n]`, firmware-version chooser) actually wait for keyboard input. Before this, the re-execed sh inherited the closed-curl-pipe as stdin and every `read` returned empty immediately, silently picking defaults without giving the user a chance to type. Falls back to no-redirect on headless / no-controlling-tty environments (CI, docker without `-t`). |
 
 ## Known issues
 
