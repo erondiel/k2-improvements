@@ -6,7 +6,14 @@ Interactive TUI installer for the K2 Plus on stock Creality firmware. Builds on 
 
 ## Quick install
 
-From your PC's terminal (Linux / Mac / WSL / Git Bash on Windows):
+**Single command for every user.** From your PC's terminal (Linux / Mac / WSL / Git Bash on Windows):
+
+```bash
+curl -sSL https://raw.githubusercontent.com/erondiel/k2-improvements/main/bootstrap.sh \
+  | sh -s -- <printer-ip>
+```
+
+Or if you'd rather have the source locally first:
 
 ```bash
 git clone https://github.com/erondiel/k2-improvements.git
@@ -14,17 +21,21 @@ cd k2-improvements
 sh bootstrap.sh <printer-ip>
 ```
 
-The bootstrap takes ~2 minutes and:
-1. SSH-tests the printer (root SSH must be enabled in Settings → General → "Open Root").
-2. Installs Entware on the printer using its built-in `python3` + a small `wget` shim (stock K2 Plus has no `wget`/`curl`, which is why the official Entware installer fails on it).
-3. `opkg install`s `git` + `dialog` + `ca-bundle`.
-4. `git clone`s this fork into `/mnt/UDISK/k2-improvements`.
+The bootstrap takes ~2 minutes. It auto-detects your firmware and existing-install state and does the right thing — **no flags needed for the common cases.** What happens:
 
-When it finishes, SSH into the printer and launch the menu:
+1. SSH-tests the printer (root SSH must be enabled in Settings → General → "Open Root").
+2. Installs Entware via the printer's built-in `python3` + a small `wget` shim (stock K2 Plus has no `wget`/`curl`, which is why the official Entware installer fails on it).
+3. `opkg install`s `git` + `dialog` + `ca-bundle`.
+4. Detects firmware and existing-install state, picks the right path (see [Firmware-version routing](#firmware-version-routing)), and clones into `/mnt/UDISK/k2-improvements/` (or `/mnt/UDISK/k2-improvements-extras/` if you're on 1.1.3.13 with an existing install and choose extras-only).
+
+When it finishes, SSH in and launch the menu using the exact command the bootstrap printed (it varies based on what was installed):
 
 ```bash
 ssh root@<printer-ip>
-sh /mnt/UDISK/k2-improvements/menu.sh
+# bootstrap will print one of these as the launch command:
+#   sh /mnt/UDISK/k2-improvements/menu.sh                            (1.1.5.2 users)
+#   sh /mnt/UDISK/k2-improvements/gimme-the-jamin.sh                 (1.1.3.13 fresh install)
+#   K2_EXTRAS_ONLY=1 sh /mnt/UDISK/k2-improvements-extras/menu.sh    (1.1.3.13 + existing install, extras-only)
 ```
 
 ## The 9-item menu
@@ -65,15 +76,33 @@ Tested live on a freshly factory-reset **K2 Plus 1.1.5.2 + Cartographer V4** on 
 
 ## Firmware-version routing
 
-`bootstrap.sh` detects which Creality firmware your printer runs and picks the right install path:
+`bootstrap.sh` detects firmware **and** existing-install state and picks the right path automatically:
 
-| Detected firmware | What bootstrap does | Final command |
+| Detected state | What bootstrap does | Final launch command |
 | --- | --- | --- |
-| **1.1.5.2** | Clones this fork, gives you the full TUI installer (menu + extras) | `sh /mnt/UDISK/k2-improvements/menu.sh` |
-| **1.1.3.13** | Clones [Jacob10383/k2-improvements](https://github.com/Jacob10383/k2-improvements) `main` upstream, applies our portable bug-fixes (see below), then hands off to the upstream installer | `sh /mnt/UDISK/k2-improvements/gimme-the-jamin.sh` |
+| **1.1.5.2** (fresh or update) | Clones this fork, gives you the full TUI installer (menu + extras) | `sh /mnt/UDISK/k2-improvements/menu.sh` |
+| **1.1.3.13**, no existing install | Clones [Jacob10383/k2-improvements](https://github.com/Jacob10383/k2-improvements) `main` upstream, applies our portable bug-fixes (see below), then hands off to the upstream installer | `sh /mnt/UDISK/k2-improvements/gimme-the-jamin.sh` |
+| **1.1.3.13 with existing Jacob install** | Detects `/mnt/UDISK/k2-improvements/` already cloned from Jacob10383. Asks "Add extras only? [Y/n]" — defaults to yes. On yes, clones erondiel into `/mnt/UDISK/k2-improvements-extras/` (sibling path, **does NOT touch** the existing install) and shows a reduced menu (Status / Extras / KAMP / Update). On no, re-runs Jacob's full install. | `K2_EXTRAS_ONLY=1 sh /mnt/UDISK/k2-improvements-extras/menu.sh` |
 | Unknown / 1.1.4.x / other | Prompts you to pick which path to use | varies |
 
-**1.1.3.13 users do NOT get our menu UI or K2-Plus-specific extras** (KAMP via menu, surface-selection-wrapper, cartographer-offset-setup picker, cartographer-macros). Those rely on the rebased Klipper patches that only target 1.1.5.2. If you want them, switch to 1.1.5.2.
+**1.1.3.13 users CAN now get our K2-Plus-specific extras** (KAMP, surface-selection-wrapper, cartographer-offset-setup picker, cartographer-macros) on top of an existing Jacob10383 install — that's the third row above. The rebased Klipper patches stay 1.1.5.2-only; the extras menu only adds config files / macros, never touches Klipper py files, so it's safe cross-firmware.
+
+### Extras-only mode safety
+
+When extras-only mode activates (auto-detected on 1.1.3.13 with existing install, or forced via `--extras-only` flag), three independent layers prevent accidental damage to the working Cartographer install:
+
+1. **Bootstrap clones to a separate path** (`/mnt/UDISK/k2-improvements-extras/`), never touches `/mnt/UDISK/k2-improvements/`.
+2. **`menu.sh` path-based safeguard** — auto-sets extras-only mode when launched from a `-extras` install dir, even if the user re-enters the menu by typing `sh menu.sh` directly without the env var.
+3. **`main_menu` firmware-based force** — if the printer is on 1.1.3.13 and someone bypasses both bootstrap and the path safeguard (manually clones erondiel into the regular path), the menu still detects 1.1.3.13 firmware and forces extras-only mode at runtime with a yellow warning banner.
+
+The reduced menu hides Install-essentials, Features, and the firmware-flash items. Pressing them shows "Disabled in extras-only mode."
+
+### Power-user override flags
+
+Both skip the auto-detect prompt:
+
+- `--extras-only` — force extras-only regardless of state
+- `--full` — force full install regardless of state (re-runs everything; idempotent)
 
 ### Portable bug-fixes auto-applied to the 1.1.3.13 path
 
