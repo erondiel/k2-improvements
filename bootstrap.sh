@@ -801,12 +801,24 @@ remote "[ -f /etc/profile.d/k2-installer-path.sh ] || \
         printf 'export PATH=/opt/bin:/opt/sbin:\$PATH\n' > /etc/profile.d/k2-installer-path.sh"
 
 echo "I: cloning installer to ${CLONE_DIR} (branch: $REPO_BRANCH)"
+# Update strategy: try a fast-forward pull first (preserves anything
+# the user might've intentionally edited, even though they shouldn't).
+# If that fails — e.g. the working tree has accumulated untracked or
+# modified files from previous interrupted runs — fall through to a
+# hard reset to origin so bootstrap can complete instead of bailing
+# halfway through. The install dir isn't a user-editable workspace;
+# customizations belong in printer.cfg / overrides.cfg, not here.
 remote "PATH=/opt/bin:/opt/sbin:\$PATH; \
         D=${CLONE_DIR}; \
         if [ -d \$D/.git ]; then \
             git -C \$D fetch origin $REPO_BRANCH; \
-            git -C \$D checkout $REPO_BRANCH; \
-            git -C \$D pull --ff-only; \
+            if git -C \$D checkout $REPO_BRANCH 2>/dev/null && git -C \$D pull --ff-only 2>/dev/null; then \
+                echo \"I: ff-only update succeeded\"; \
+            else \
+                echo \"I: working tree dirty or fast-forward failed — force-resetting to origin/$REPO_BRANCH\"; \
+                git -C \$D reset --hard origin/$REPO_BRANCH; \
+                git -C \$D clean -fd; \
+            fi; \
         else \
             if [ -d \$D ] && [ ! -d \$D/.git ]; then \
                 mv \$D \${D}.flat-\$(date +%s); \
