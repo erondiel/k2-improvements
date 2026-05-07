@@ -949,3 +949,24 @@ ${LAUNCH_INSTRUCTIONS}
 ==================================================================
 EOF
 fi
+
+# Offer to auto-launch the menu — only in local-mode (clean exec) and
+# only when stdin is interactive (avoid hanging non-interactive runs).
+# Default yes; user just presses Enter to proceed.
+if [ "${LOCAL_MODE:-0}" = "1" ] && (: < /dev/tty) 2>/dev/null; then
+    echo ""
+    printf "Launch the menu now? [Y/n] "
+    read LAUNCH_NOW_CHOICE
+    case "$LAUNCH_NOW_CHOICE" in
+        n|N|no|NO)
+            echo "I: ok — run the command above when ready"
+            ;;
+        *)
+            echo "I: launching menu..."
+            # exec replaces this bootstrap process with the menu, so when
+            # the user exits the menu they return to their shell, not
+            # back into a finished bootstrap script.
+            exec sh -c "$LAUNCH_CMD"
+            ;;
+    esac
+fi
