@@ -674,11 +674,22 @@ if [ "$TEST_JACOB" = "1" ]; then
 
 EOF
     if [ "$CLONE_OK" = "1" ]; then
+        # ANSI colors for visual emphasis (degrade gracefully on non-ANSI
+        # terminals — the escape sequences just render as their literal
+        # bytes, which is rare and harmless).
+        ESC=$(printf '\033')
+        C_BOLD="${ESC}[1m"
+        C_CYAN="${ESC}[1;36m"
+        C_DIM="${ESC}[2m"
+        C_RESET="${ESC}[0m"
         cat <<EOF
- Next step: run the menu.sh you just got — should show the extras
- menu (Status / Extras / KAMP / Update) for your test:
 
-     $LAUNCH_CMD
+ ${C_BOLD}Next step:${C_RESET} run this to launch the extras menu
+
+     ${C_CYAN}${LAUNCH_CMD}${C_RESET}
+
+ ${C_DIM}(The K2_EXTRAS_ONLY=1 prefix is optional — menu.sh detects the
+ -extras path and auto-sets it. Either form works.)${C_RESET}
 
 EOF
     fi
