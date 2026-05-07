@@ -1,12 +1,23 @@
 #!/bin/sh
 # K2-Plus extras (patches not in upstream k2-improvements). Install only.
 
-# name|detector|description|script_path  (one per line, script_path relative to INSTALLER_DIR)
-_EXTRAS='prtouch-cleanup|is_prtouch_clean|Remove orphan [prtouch_v3] SAVE_CONFIG header|installer/extras/prtouch-cleanup/install.sh
-surface-selection-wrapper|is_surface_wrap|START_PRINT SURFACE= param loads matching scan/touch model|installer/extras/surface-selection-wrapper/install.sh
-cartographer-offset-setup|is_carto_offset_set|Cartographer probe X/Y offset (Jamin/JimmyV/custom)|installer/extras/cartographer-offset-setup/install.sh
-cartographer-macros|is_carto_macros|CARTO_* macro buttons for Fluidd (calibrate/load/touch home)|installer/extras/cartographer-macros/install.sh
-motor-state-guard|is_motor_guard|G28 crash-guard after klippy-only restart (UNTESTED)|features/motor-state-guard/install.sh'
+# name|detector|description|script_path|requires  (one per line; script_path
+# relative to INSTALLER_DIR; requires is the name of a function that must
+# return 0 for the extra to be installable — empty if no precondition).
+_EXTRAS='prtouch-cleanup|is_prtouch_clean|Remove orphan [prtouch_v3] SAVE_CONFIG header|installer/extras/prtouch-cleanup/install.sh|
+surface-selection-wrapper|is_surface_wrap|START_PRINT SURFACE= param loads matching scan/touch model|installer/extras/surface-selection-wrapper/install.sh|is_cartographer
+cartographer-offset-setup|is_carto_offset_set|Cartographer probe X/Y offset (Jamin/JimmyV/custom)|installer/extras/cartographer-offset-setup/install.sh|is_cartographer
+cartographer-macros|is_carto_macros|CARTO_* macro buttons for Fluidd (calibrate/load/touch home)|installer/extras/cartographer-macros/install.sh|is_cartographer
+motor-state-guard|is_motor_guard|G28 crash-guard after klippy-only restart (UNTESTED)|features/motor-state-guard/install.sh|'
+
+# Human-readable hint for the requires_function name. Add new entries here
+# when new precondition functions are introduced.
+_extras_requires_label() {
+    case "$1" in
+        is_cartographer) echo "needs Cartographer" ;;
+        *)               echo "blocked: $1" ;;
+    esac
+}
 
 menu_extras() {
     while :; do
@@ -21,9 +32,17 @@ menu_extras() {
             local name=$(printf '%s' "$line" | cut -d'|' -f1)
             local det=$(printf  '%s' "$line" | cut -d'|' -f2)
             local desc=$(printf '%s' "$line" | cut -d'|' -f3)
-            local mark
-            if "$det" 2>/dev/null; then mark=$(c_green '[X]'); else mark=$(c_dim '[ ]'); fi
-            printf '  %2d. %s %-30s %s\n' "$n" "$mark" "$name" "$(c_dim "$desc")"
+            local req=$(printf  '%s' "$line" | cut -d'|' -f5)
+            local mark hint=""
+            if "$det" 2>/dev/null; then
+                mark=$(c_green '[X]')
+            elif [ -n "$req" ] && ! "$req" 2>/dev/null; then
+                mark=$(c_yellow '[!]')
+                hint=" $(c_yellow "($(_extras_requires_label "$req"))")"
+            else
+                mark=$(c_dim '[ ]')
+            fi
+            printf '  %2d. %s %-30s %s%s\n' "$n" "$mark" "$name" "$(c_dim "$desc")" "$hint"
         done
         IFS="$OLDIFS"
         printf '\n   b. Back\n\n'
@@ -45,11 +64,37 @@ install_extra() {
     local name=$(printf '%s' "$line" | cut -d'|' -f1)
     local det=$(printf  '%s' "$line" | cut -d'|' -f2)
     local script_rel=$(printf '%s' "$line" | cut -d'|' -f4)
+    local req=$(printf  '%s' "$line" | cut -d'|' -f5)
     local script="$INSTALLER_DIR/$script_rel"
     local readme="$(dirname "$script")/README.md"
 
     clear
     printf '\n=== %s ===\n\n' "$name"
+
+    # Precondition gate: refuse with a clean message if the extra requires
+    # something that's not present (e.g. is_cartographer fails). The
+    # install scripts have their own grep checks too — this is just the
+    # friendlier UX layer that prevents the user from running the script
+    # at all when the precondition is missing.
+    if [ -n "$req" ] && ! "$req" 2>/dev/null; then
+        printf '%s\n\n' "$(c_yellow "Cannot install: $(_extras_requires_label "$req")")"
+        case "$req" in
+            is_cartographer)
+                printf '  This extra requires Cartographer to be installed first.\n'
+                printf '  On a fresh K2 Plus, install Cartographer via:\n\n'
+                printf '    - Menu item 2 (Install essentials)  — recommended path\n'
+                printf '    - Menu item 3 (Features) -> cartographer\n'
+                printf '    - Or Jacob10383'"'"'s gimme-the-jamin.sh on 1.1.3.13\n\n'
+                printf '  Once Cartographer is installed and Klipper has restarted with the\n'
+                printf '  new config, this extra will become available.\n\n'
+                ;;
+            *)
+                printf '  Precondition function "%s" returned false.\n\n' "$req"
+                ;;
+        esac
+        press_enter
+        return 1
+    fi
 
     if [ ! -f "$script" ]; then
         warn "install script not found: $script"
