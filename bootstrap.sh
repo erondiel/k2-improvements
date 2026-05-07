@@ -290,16 +290,74 @@ maybe_install_sshpass() {
     fi
 }
 
-maybe_install_sshpass || true
-echo ""
+# Detect "running on the target" — when bootstrap is invoked on the
+# printer itself with the printer's own IP (or localhost / 127.0.0.1).
+# In that case we can skip SSH entirely and run commands locally,
+# which:
+#   - eliminates the password-prompt spam (no SSH = no auth)
+#   - removes the dropbear-pipe / sshpass / expect-wrapper chain
+#   - is much faster (no network roundtrip per command)
+#   - sidesteps the curl-pipe-stdin issues for users running from
+#     the printer shell
+#
+# Detection probes localhost aliases + local interface IPs via `ip` or
+# `ifconfig` (whichever the host has), with a hostname fallback.
+is_local_target() {
+    case "$1" in
+        localhost|127.0.0.1|::1) return 0 ;;
+    esac
+    if command -v ip >/dev/null 2>&1; then
+        ip -o addr show 2>/dev/null | grep -qE "inet $1/" && return 0
+    fi
+    if command -v ifconfig >/dev/null 2>&1; then
+        ifconfig 2>/dev/null | grep -qE "inet (addr:)?$1\b" && return 0
+    fi
+    [ "$1" = "$(hostname 2>/dev/null)" ] && return 0
+    return 1
+}
 
-SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR"
+LOCAL_MODE=0
+if is_local_target "$PRINTER_IP"; then
+    LOCAL_MODE=1
+fi
 
-if command -v sshpass >/dev/null 2>&1; then
-    SSH="sshpass -p $PASSWORD ssh $SSH_OPTS -o ConnectTimeout=10"
-    SCP="sshpass -p $PASSWORD scp -O $SSH_OPTS"
+if [ "$LOCAL_MODE" = "1" ]; then
+    echo "I: target $PRINTER_IP is this machine — running commands locally (no SSH, no password prompts)"
+    echo ""
+    # In local mode, `remote` runs commands directly via sh -c. No SSH,
+    # no sshpass, no expect wrapper. The arg semantics match: bootstrap
+    # always passes the entire command as a single arg (e.g.
+    # `remote "grep foo bar | tail -1"`), so `sh -c "$*"` evaluates it
+    # correctly. SCP becomes `cp` with the root@host: prefix stripped
+    # from the dest path; only used in two non-extras-only paths so most
+    # users never hit it.
+    remote() { sh -c "$*"; }
+    SCP="bootstrap_local_scp"
+    bootstrap_local_scp() {
+        # Strip leading flags (-O, -r, etc.); destination is the last
+        # arg, rewrite "root@host:/path" -> "/path".
+        local args="" srcs="" dest=""
+        while [ "$#" -gt 1 ]; do
+            case "$1" in
+                -*) args="$args $1" ;;
+                *)  srcs="$srcs $1" ;;
+            esac
+            shift
+        done
+        dest="${1#root@*:}"
+        sh -c "cp $args $srcs '$dest'"
+    }
 else
-    cat <<EOF
+    maybe_install_sshpass || true
+    echo ""
+
+    SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR"
+
+    if command -v sshpass >/dev/null 2>&1; then
+        SSH="sshpass -p $PASSWORD ssh $SSH_OPTS -o ConnectTimeout=10"
+        SCP="sshpass -p $PASSWORD scp -O $SSH_OPTS"
+    else
+        cat <<EOF
 NOTE: 'sshpass' is not available — SSH will prompt for the printer
       password ($PASSWORD by default) on every step. Manual install:
         Linux/WSL: apt install sshpass
@@ -307,19 +365,28 @@ NOTE: 'sshpass' is not available — SSH will prompt for the printer
         K2 Plus:   opkg install sshpass
         Other:     https://github.com/kevinburke/sshpass#installation
 EOF
-    SSH="ssh $SSH_OPTS -o ConnectTimeout=10"
-    SCP="scp -O $SSH_OPTS"
+        SSH="ssh $SSH_OPTS -o ConnectTimeout=10"
+        SCP="scp -O $SSH_OPTS"
+    fi
+
+    remote() { $SSH "root@$PRINTER_IP" "$@"; }
 fi
 
-remote() { $SSH "root@$PRINTER_IP" "$@"; }
-
-echo "I: SSH probe to $PRINTER_IP"
-remote "true" || {
-    echo "ERROR: SSH to root@$PRINTER_IP failed."
-    echo "       1. Enable root SSH on the printer's screen (the 'open root' disclaimer)"
-    echo "       2. Confirm IP and password"
-    exit 1
-}
+if [ "$LOCAL_MODE" = "1" ]; then
+    echo "I: local-mode probe (skipping SSH)"
+    remote "true" || {
+        echo "ERROR: local probe failed unexpectedly. Aborting."
+        exit 1
+    }
+else
+    echo "I: SSH probe to $PRINTER_IP"
+    remote "true" || {
+        echo "ERROR: SSH to root@$PRINTER_IP failed."
+        echo "       1. Enable root SSH on the printer's screen (the 'open root' disclaimer)"
+        echo "       2. Confirm IP and password"
+        exit 1
+    }
+fi
 
 # Detect printer firmware to pick the right installer source.
 # Our cartographer Klipper patches are rebased for 1.1.5.2; on 1.1.3.13 we
