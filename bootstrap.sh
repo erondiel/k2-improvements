@@ -27,6 +27,20 @@
 
 set -eu
 
+# Print a startup message before any potentially slow work (curl/wget
+# self-download, opkg update, sshpass install). Without this, the user
+# pastes the curl one-liner and sees nothing for 5-10 seconds — easy to
+# mistake for a frozen terminal. Suppressed on re-exec via BOOTSTRAP_REEXEC.
+if [ "${BOOTSTRAP_REEXEC:-0}" = "0" ]; then
+    cat <<'EOF'
+=================================================================
+ K2 Plus installer bootstrap (erondiel/k2-improvements)
+ Starting up — this may take a few seconds while we prepare
+ dependencies (download installer, install sshpass, etc.)
+=================================================================
+EOF
+fi
+
 # When this script is invoked via `curl -sSL ... | sh`, stdin is the curl
 # pipe — not a terminal. The K2 Plus's dropbear SSH client (and BusyBox in
 # general) reads password input from stdin if no TTY is properly attached,
