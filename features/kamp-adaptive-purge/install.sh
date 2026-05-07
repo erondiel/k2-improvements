@@ -71,32 +71,127 @@ if [ -f ~/printer_data/config/custom/exclude_object.cfg ]; then
 fi
 
 # ------------------------------------------------------------
-# 6. Done — instructions for the user
+# 6. Optional: enable Klipper firmware retraction
+# ------------------------------------------------------------
+# KAMP's LINE_PURGE prefers G10/G11 (firmware retraction) over inline
+# G1 E-.5/+.5 fallbacks, and prints a recommendation message at print
+# time if firmware retraction is not configured. Offer to add a default
+# config here. Skip silently if [firmware_retraction] already exists
+# anywhere in the config tree, or if running non-interactively (e.g.
+# via menu.sh batch with no controlling terminal).
+
+FW_RETRACT_STATUS="not configured"
+
+if grep -rEhq '^\[firmware_retraction\]' ~/printer_data/config/ 2>/dev/null; then
+    echo "I: [firmware_retraction] already configured — skipping"
+    FW_RETRACT_STATUS="already configured (left alone)"
+elif [ ! -t 0 ]; then
+    echo "I: non-interactive run; skipping firmware_retraction prompt"
+    echo "I:   to enable later: cp ${SCRIPT_DIR}/firmware_retraction.cfg \\"
+    echo "I:                       ~/printer_data/config/custom/ and add to main.cfg"
+    FW_RETRACT_STATUS="not configured (use --enable-firmware-retraction or run interactively)"
+else
+    echo ""
+    echo "Optional: enable Klipper firmware retraction?"
+    echo "  - Silences KAMP's purge-time warning"
+    echo "  - Lets G10/G11 work in any macro"
+    echo "  - One place to tune retraction length/speed"
+    echo "  - Default ships with conservative PLA values (0.5mm @ 35mm/s)"
+    echo "  - If you have it set per-filament in the slicer, you can skip this"
+    echo ""
+    printf "Enable firmware retraction with default values? [y/N] "
+    read FW_RETRACT_CHOICE
+    case "$FW_RETRACT_CHOICE" in
+        y|Y|yes|YES)
+            echo "I: copying firmware_retraction.cfg into custom/"
+            cp -f "${SCRIPT_DIR}/firmware_retraction.cfg" \
+                ~/printer_data/config/custom/firmware_retraction.cfg
+            python ${SCRIPT_DIR}/../../scripts/ensure_included.py \
+                ~/printer_data/config/custom/main.cfg firmware_retraction.cfg
+            FW_RETRACT_STATUS="enabled with PLA defaults — tune in custom/firmware_retraction.cfg"
+            ;;
+        *)
+            echo "I: skipped firmware retraction"
+            echo "I:   to enable later: cp ${SCRIPT_DIR}/firmware_retraction.cfg \\"
+            echo "I:                       ~/printer_data/config/custom/ and add to main.cfg"
+            FW_RETRACT_STATUS="not configured"
+            ;;
+    esac
+fi
+
+# ------------------------------------------------------------
+# 7. Done — instructions for the user
 # ------------------------------------------------------------
 echo ""
 echo "=================================================================="
 echo " KAMP adaptive line-purge installed."
 echo "=================================================================="
 echo ""
-echo " Next steps (do these when convenient — Klipper not restarted yet):"
+echo " Firmware retraction: ${FW_RETRACT_STATUS}"
 echo ""
-echo "  1. Restart Klipper (FIRMWARE_RESTART or SAVE_CONFIG) when no print"
-echo "     is active. New [exclude_object] block + LINE_PURGE macro will"
-echo "     load."
+echo " IMPORTANT — slicer-side changes are required for KAMP to work."
+echo " Without them LINE_PURGE has nothing to read and falls back to a"
+echo " static purge at the bed origin (the original problem)."
 echo ""
-echo "  2. Update your slicer's machine start gcode: replace the hardcoded"
-echo "     purge G1 lines with a single LINE_PURGE call. Example:"
+echo "------------------------------------------------------------------"
+echo " 1. Restart Klipper (FIRMWARE_RESTART) when no print is active."
+echo "    The new [exclude_object] block and LINE_PURGE macro will load."
 echo ""
-echo "         (delete old G1 X0 Y150 ... G1 X150 Y0 ... block)"
-echo "         LINE_PURGE"
+echo "------------------------------------------------------------------"
+echo " 2. Enable 'Label objects' in your slicer."
 echo ""
-echo "     KAMP reads EXCLUDE_OBJECT_DEFINE polygons (Creality Print emits"
-echo "     these automatically) and computes the purge position to land"
-echo "     ~10mm in front of your print's bbox, inside the bed mesh region."
-echo "     Tune via variable_purge_margin in custom/kamp_settings.cfg."
+echo "    KAMP reads EXCLUDE_OBJECT_DEFINE polygons. Without 'Label"
+echo "    objects' enabled, the slicer doesn't emit them and LINE_PURGE"
+echo "    falls back to a static purge at the bed origin."
 echo ""
-echo "  3. Tune defaults in custom/kamp_settings.cfg or override in"
-echo "     custom/overrides.cfg if needed."
+echo "    Creality Print 7.x: Process settings (left panel) -> use the"
+echo "                        search box, type 'label' -> enable"
+echo "                        'Label objects' (Others tab in 7.x)."
 echo ""
-echo "  See features/kamp-adaptive-purge/README.md for the full guide."
+echo "    Orca / OrcaSlicer:  Process tab -> Quality -> Advanced ->"
+echo "                        enable 'Label objects' (or 'Use exclude_object')."
+echo ""
+echo "------------------------------------------------------------------"
+echo " 3. Update your slicer's Machine Start G-code."
+echo ""
+echo "    Drop-in templates ship with this feature:"
+echo "      slicer-templates/creality-print-machine-start.gcode (verified"
+echo "                                                          on CP 7.1.1)"
+echo "      slicer-templates/orca-machine-start.gcode (unverified — bed_type"
+echo "                                                strings may differ)"
+echo ""
+echo "    Both replace the hardcoded purge with a single LINE_PURGE call"
+echo "    and use a blocking M109 so the purge fires at full print temp."
+echo ""
+echo "    On the printer, the templates are at:"
+echo "      ${SCRIPT_DIR}/slicer-templates/"
+echo ""
+echo "    Open the file you need, copy the contents, paste into:"
+echo "      Slicer -> printer profile -> Machine G-code -> Machine start"
+echo ""
+echo "------------------------------------------------------------------"
+echo " 4. Verify it took effect."
+echo ""
+echo "    Slice your test print, then before sending it to the printer:"
+echo "      head -100 your-print.gcode | grep -E 'EXCLUDE_OBJECT_DEFINE|LINE_PURGE'"
+echo ""
+echo "    You should see:"
+echo "      - EXCLUDE_OBJECT_DEFINE NAME=... POLYGON=...  (one per object)"
+echo "      - LINE_PURGE  (in the start-print block)"
+echo ""
+echo "    If EXCLUDE_OBJECT_DEFINE is missing -> Label objects is OFF."
+echo "    If LINE_PURGE is missing -> machine start gcode change didn't save."
+echo ""
+echo "------------------------------------------------------------------"
+echo " 5. Tune (optional)."
+echo ""
+echo "    Defaults are in custom/kamp_settings.cfg. Common knobs:"
+echo "      variable_purge_margin : mm in front of print bbox (default 10)"
+echo "      variable_purge_amount : mm of filament purged    (default 25)"
+echo "      variable_purge_height : Z height during purge    (default 0.4)"
+echo ""
+echo "    Override in custom/overrides.cfg to survive future re-installs."
+echo ""
+echo "------------------------------------------------------------------"
+echo " See features/kamp-adaptive-purge/README.md for the full guide."
 echo ""

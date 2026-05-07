@@ -23,7 +23,8 @@ Small prints get short purges, large prints get long ones — no wasted filament
 - `Line_Purge.cfg` symlinked from KAMP into `custom/` (gets KAMP updates via `git pull` in the repo).
 - `kamp_settings.cfg` copied (not symlinked) into `custom/` — K2 Plus-tailored defaults; survives KAMP repo updates intact.
 - `exclude_object.cfg` (one-line `[exclude_object]` block) into `custom/`, only if no existing `[exclude_object]` is defined elsewhere.
-- All three included from `custom/main.cfg`.
+- **(Optional, prompted)** `firmware_retraction.cfg` into `custom/` if the user opts in — silences KAMP's purge-time warning, lets G10/G11 work in any macro, and gives one place to tune retraction. Conservative PLA defaults (0.5mm @ 35mm/s); skip if you have per-filament retraction set in your slicer. Skipped automatically if `[firmware_retraction]` is already configured anywhere in the config tree, or if running non-interactively.
+- All four included from `custom/main.cfg` (firmware_retraction.cfg only if opted in).
 
 `Smart_Park.cfg` and `Adaptive_Meshing.cfg` from KAMP are intentionally **not** installed:
 
