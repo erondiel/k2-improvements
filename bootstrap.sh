@@ -203,6 +203,42 @@ if [ "$EXTRAS_OVERRIDE" = "0" ] && [ "$PRINTER_FW" = "1.1.3.13" ]; then
     fi
 fi
 
+# If user explicitly forced --extras-only (EXTRAS_OVERRIDE=1 with EXTRAS_ONLY=1),
+# verify a [cartographer] section exists in the printer config. Most extras
+# (surface-selection-wrapper, cartographer-offset-setup, cartographer-macros)
+# require Cartographer to already be installed. KAMP and motor-state-guard
+# work standalone, but flagging this up-front avoids confusion when the
+# extras' own install scripts bail on the same precondition.
+#
+# Skip this check when EXTRAS_ONLY was set by the auto-detect prompt
+# (EXTRAS_OVERRIDE=0) — that path already confirmed an install exists.
+if [ "$EXTRAS_OVERRIDE" = "1" ] && [ "$EXTRAS_ONLY" = "1" ]; then
+    echo "I: checking for [cartographer] section (extras precondition)"
+    HAS_CARTO=$(remote 'grep -lqE "^\[cartographer\]" /mnt/UDISK/printer_data/config/printer.cfg /mnt/UDISK/printer_data/config/custom/*.cfg 2>/dev/null && echo yes || echo no')
+    if [ "$HAS_CARTO" = "no" ]; then
+        echo ""
+        echo "W: --extras-only forced but no [cartographer] section found in printer config."
+        echo "W:"
+        echo "W:   Most extras require Cartographer to already be installed:"
+        echo "W:     - surface-selection-wrapper  (patches START_PRINT to call CARTOGRAPHER_*)"
+        echo "W:     - cartographer-offset-setup  (edits [cartographer] x_offset / y_offset)"
+        echo "W:     - cartographer-macros        (CARTO_* macros wrap CARTOGRAPHER_*)"
+        echo "W:"
+        echo "W:   These extras work standalone:"
+        echo "W:     - KAMP (adaptive purge)"
+        echo "W:     - motor-state-guard (UNTESTED)"
+        echo "W:     - prtouch-cleanup"
+        echo ""
+        printf "Continue anyway? [y/N] "
+        read CONT_CHOICE
+        case "$CONT_CHOICE" in
+            y|Y|yes|YES) echo "I: proceeding — Cartographer-dependent extras will refuse to install" ;;
+            *) echo "I: cancelled. Drop --extras-only for the firmware-routed flow."; exit 0 ;;
+        esac
+        echo ""
+    fi
+fi
+
 if [ "$EXTRAS_ONLY" = "1" ]; then
     # Extras-only mode: always use erondiel's repo, clone to a sibling path
     # so we don't disturb any existing /mnt/UDISK/k2-improvements/ install.

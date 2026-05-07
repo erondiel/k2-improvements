@@ -10,6 +10,18 @@ set -eu
 CFG_DIR="${PRINTER_CFG_DIR:-/mnt/UDISK/printer_data/config}"
 SYMLINK="$CFG_DIR/custom/start_print.cfg"
 
+# Precondition: Cartographer must be installed. The wrapper inserts
+# CARTOGRAPHER_SCAN_MODEL / CARTOGRAPHER_TOUCH_MODEL calls into START_PRINT,
+# which error at runtime if the cartographer module isn't loaded.
+grep -qE '^\[cartographer\]' "$CFG_DIR/printer.cfg" "$CFG_DIR/custom/"*.cfg 2>/dev/null || {
+    echo "ERROR: no [cartographer] section found in printer config."
+    echo "       This wrapper patches START_PRINT to call CARTOGRAPHER_*"
+    echo "       commands, which need Cartographer installed first."
+    echo "       Install via Jacob10383's gimme-the-jamin.sh or the menu's"
+    echo "       'Install Essentials' before adding this extra."
+    exit 1
+}
+
 [ -e "$SYMLINK" ] || { echo "ERROR: $SYMLINK not found — install macros feature first"; exit 1; }
 
 # Resolve symlink so we patch the actual file
