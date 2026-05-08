@@ -6,24 +6,82 @@ Interactive TUI installer for the K2 Plus on stock Creality firmware. Builds on 
 
 ## Quick install
 
-**Single command for every user.** From your PC's terminal (Linux / Mac / WSL / Git Bash on Windows / MobaXterm), or directly from your printer's shell — whichever's easier. Use whichever of `curl` or `wget` is on your system:
+**One command. No flags. Works for everyone.**
+
+### Step 1 — Enable root SSH on the printer
+
+On the printer's touchscreen: **Settings → General → "Open Root"**. Accept the disclaimer. (One-time, persists across reboots.)
+
+### Step 2 — Find your printer's IP
+
+On the touchscreen home screen, or your router's device list. Looks like `192.168.1.123` or similar.
+
+### Step 3 — Run the bootstrap
+
+Pick the path that matches where you are:
+
+#### A) From your PC (most users)
+
+Open a terminal — Linux, Mac, WSL, Git Bash on Windows, or MobaXterm all work. Replace `<printer-ip>` with the IP from step 2:
 
 ```bash
-# with curl:
 curl -sSL https://raw.githubusercontent.com/erondiel/k2-improvements/main/bootstrap.sh | sh -s -- <printer-ip>
+```
 
-# with wget (K2 Plus shells default to wget, no curl):
+If `curl` isn't available on your system (e.g. plain Windows Git Bash sometimes), use `wget`:
+
+```bash
 wget -qO- https://raw.githubusercontent.com/erondiel/k2-improvements/main/bootstrap.sh | sh -s -- <printer-ip>
 ```
 
-Running it from inside the printer? Pass `localhost` as the IP — bootstrap detects "I'm on the target" and skips SSH entirely (no password prompts, faster, no auth setup):
+#### B) From inside the printer's shell
+
+If you don't have a Linux/Mac/WSL terminal handy, SSH into the printer first and run the bootstrap from there. Use `wget` (the K2 Plus shell has wget, not curl):
 
 ```bash
 ssh root@<printer-ip>
-wget -qO- https://raw.githubusercontent.com/erondiel/k2-improvements/main/bootstrap.sh | sh -s -- localhost
+# (default password: creality_2024)
+wget -qO- https://raw.githubusercontent.com/erondiel/k2-improvements/main/bootstrap.sh | sh -s -- <printer-ip>
 ```
 
-If you'd rather have the source locally first:
+> **Use the printer's IP, NOT `localhost`** — but bootstrap detects "I'm running on the target machine" and skips SSH entirely. No password prompts, faster, no expect-wrapper machinery. (Localhost works too if you prefer; both forms get auto-detected as local.)
+
+### What you'll see
+
+```
+=================================================================
+ K2 Plus installer bootstrap (erondiel/k2-improvements)
+ Starting up — this may take a few seconds while we prepare
+ dependencies (download installer, install sshpass, etc.)
+=================================================================
+```
+
+…then the bootstrap walks through:
+
+1. **SSH probe** (or local-mode probe if running on the printer)
+2. **Firmware detection** — picks the right install path automatically (see [Firmware-version routing](#firmware-version-routing) below)
+3. **Existing-install detection** — if you already have a Cartographer install, it asks if you want to add extras *on top* without disturbing it (default yes)
+4. **Entware + dependencies** — installs whatever's missing (`git`, `dialog`, `sshpass`, `ca-bundle`, etc.) on the first run; idempotent on subsequent runs
+5. **Clone** — pulls the right repo into the right path
+6. **Done** — prints the launch command for the menu, and offers to launch it for you (default yes in local-mode)
+
+Total time: ~2 minutes for a fresh install on a decent connection. Idempotent — re-runs are safe and quick.
+
+### Step 4 — Use the menu
+
+Bootstrap ends with a colored "next step" line. Press **Enter** at the prompt to launch the menu. The 9-item TUI walks you through Install Essentials, Features picker, Extras (KAMP, surface-selection-wrapper, etc.), and the rest.
+
+If you skipped the auto-launch prompt, copy the printed launch command and run it later — bootstrap shows the exact path. It's one of:
+
+```
+sh /mnt/UDISK/k2-improvements/menu.sh                            (1.1.5.2 users, fresh install)
+sh /mnt/UDISK/k2-improvements/gimme-the-jamin.sh                 (1.1.3.13 fresh install via Jacob10383)
+K2_EXTRAS_ONLY=1 sh /mnt/UDISK/k2-improvements-extras/menu.sh    (1.1.3.13 + existing install, extras-only)
+```
+
+### Alternative: clone first, run from source
+
+If you'd rather inspect the source before running anything:
 
 ```bash
 git clone https://github.com/erondiel/k2-improvements.git
@@ -31,22 +89,7 @@ cd k2-improvements
 sh bootstrap.sh <printer-ip>
 ```
 
-The bootstrap takes ~2 minutes. It auto-detects your firmware and existing-install state and does the right thing — **no flags needed for the common cases.** What happens:
-
-1. SSH-tests the printer (root SSH must be enabled in Settings → General → "Open Root").
-2. Installs Entware via the printer's built-in `python3` + a small `wget` shim (stock K2 Plus has no `wget`/`curl`, which is why the official Entware installer fails on it).
-3. `opkg install`s `git` + `dialog` + `ca-bundle`.
-4. Detects firmware and existing-install state, picks the right path (see [Firmware-version routing](#firmware-version-routing)), and clones into `/mnt/UDISK/k2-improvements/` (or `/mnt/UDISK/k2-improvements-extras/` if you're on 1.1.3.13 with an existing install and choose extras-only).
-
-When it finishes, SSH in and launch the menu using the exact command the bootstrap printed (it varies based on what was installed):
-
-```bash
-ssh root@<printer-ip>
-# bootstrap will print one of these as the launch command:
-#   sh /mnt/UDISK/k2-improvements/menu.sh                            (1.1.5.2 users)
-#   sh /mnt/UDISK/k2-improvements/gimme-the-jamin.sh                 (1.1.3.13 fresh install)
-#   K2_EXTRAS_ONLY=1 sh /mnt/UDISK/k2-improvements-extras/menu.sh    (1.1.3.13 + existing install, extras-only)
-```
+Same end result.
 
 ## The 9-item menu
 
