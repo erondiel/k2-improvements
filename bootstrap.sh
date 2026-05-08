@@ -25,7 +25,66 @@
 #
 # Idempotent — re-run any time to update.
 
+# shellcheck shell=sh disable=SC3043
+# (POSIX-strict: `local` is undefined in pure POSIX, but every shell users
+# actually run on — bash, dash, busybox ash — supports it. Acceptable.)
+
 set -eu
+
+# ANSI color codes for visual emphasis. Defined once at the top so all
+# heredocs and printf calls below can use them. Degrade gracefully on
+# non-ANSI terminals (escapes render as their literal bytes — rare and
+# harmless).
+ESC=$(printf '\033')
+C_BOLD="${ESC}[1m"
+C_CYAN="${ESC}[1;36m"
+C_DIM="${ESC}[2m"
+C_RESET="${ESC}[0m"
+
+# Post-install menu launch helper, used after both the real-install
+# final banner and the --test-jacob summary (same UX in both places).
+#
+#   --auto-launch:        exec the menu unconditionally. In local-mode
+#                         the menu runs in the current shell; in
+#                         SSH-from-PC mode we open an SSH session with
+#                         -t (TTY allocated) for an interactive menu.
+#   default + local-mode: prompt "Launch the menu now? [Y/n]" with
+#                         default yes. On yes, exec the menu.
+#   default + SSH mode:   no auto-launch — just return; user has the
+#                         printed launch command.
+#
+# Both paths skip if stdin isn't a TTY (avoid hanging non-interactive
+# runs). Reads $LAUNCH_CMD, $AUTO_LAUNCH, $LOCAL_MODE, $SSH, $PRINTER_IP
+# from the script's enclosing scope.
+maybe_launch_menu() {
+    if [ "${AUTO_LAUNCH:-0}" = "1" ]; then
+        if ! (: < /dev/tty) 2>/dev/null; then
+            echo "W: --auto-launch passed but stdin isn't a TTY — skipping (need interactive shell)"
+            return 0
+        fi
+        if [ "${LOCAL_MODE:-0}" = "1" ]; then
+            echo "I: --auto-launch — launching menu..."
+            exec sh -c "$LAUNCH_CMD"
+        else
+            echo "I: --auto-launch — opening menu over SSH (a TTY will be allocated)..."
+            # shellcheck disable=SC2086 # SSH expands to multiple args
+            exec $SSH -t "root@$PRINTER_IP" "$LAUNCH_CMD"
+        fi
+    elif [ "${LOCAL_MODE:-0}" = "1" ] && (: < /dev/tty) 2>/dev/null; then
+        echo ""
+        printf "Launch the menu now? [Y/n] "
+        read -r LAUNCH_NOW_CHOICE
+        case "$LAUNCH_NOW_CHOICE" in
+            n|N|no|NO)
+                echo "I: ok — run the command above when ready"
+                ;;
+            *)
+                echo "I: launching menu..."
+                exec sh -c "$LAUNCH_CMD"
+                ;;
+        esac
+    fi
+}
 
 # Print a startup message before any potentially slow work (curl/wget
 # self-download, opkg update, sshpass install). Without this, the user
@@ -305,7 +364,7 @@ maybe_install_sshpass() {
     echo "I:   Would run: $cmd"
     echo ""
     printf "Install sshpass now? [Y/n] "
-    read SSHPASS_INSTALL_CHOICE
+    read -r SSHPASS_INSTALL_CHOICE
     case "$SSHPASS_INSTALL_CHOICE" in
         n|N|no|NO)
             echo "I:   declined — continuing with password prompts"
@@ -468,6 +527,7 @@ EOF
         DETECTED_PATH="$TEST_JACOB_PATH"
     else
         echo "I: checking for existing install"
+        # shellcheck disable=SC2016 # intentional: $-vars expand on the printer side, not locally
         DETECTED_PATH=$(remote '
         # Try the two canonical paths first
         for d in /mnt/UDISK/k2-improvements /mnt/UDISK/root/k2-improvements; do
@@ -511,7 +571,7 @@ EOF
         echo "       Klipper patches and may require a Klipper restart afterwards)."
         echo ""
         printf "Add extras only? [Y/n] "
-        read EXTRAS_CHOICE
+        read -r EXTRAS_CHOICE
         case "$EXTRAS_CHOICE" in
             n|N|no|NO)
                 EXTRAS_ONLY=0
@@ -553,7 +613,7 @@ if [ "$EXTRAS_OVERRIDE" = "1" ] && [ "$EXTRAS_ONLY" = "1" ]; then
         echo "W:     - prtouch-cleanup"
         echo ""
         printf "Continue anyway? [y/N] "
-        read CONT_CHOICE
+        read -r CONT_CHOICE
         case "$CONT_CHOICE" in
             y|Y|yes|YES) echo "I: proceeding — Cartographer-dependent extras will refuse to install" ;;
             *) echo "I: cancelled. Drop --extras-only for the firmware-routed flow."; exit 0 ;;
@@ -621,7 +681,7 @@ else
             echo "  2) Use Jacob10383/k2-improvements upstream (1.1.3.13 patches)"
             echo "  3) Cancel"
             printf "Choose [1-3]: "
-            read FW_CHOICE
+            read -r FW_CHOICE
             case "$FW_CHOICE" in
                 1) REPO_URL="$REPO_URL_152"; REPO_BRANCH="$REPO_BRANCH_152"; CLONE_DIR="/mnt/UDISK/k2-improvements"; LAUNCH_CMD="sh ${CLONE_DIR}/menu.sh" ;;
                 2) REPO_URL="$REPO_URL_1313"; REPO_BRANCH="$REPO_BRANCH_1313"; CLONE_DIR="/mnt/UDISK/k2-improvements"; LAUNCH_CMD="sh ${CLONE_DIR}/gimme-the-jamin.sh" ;;
@@ -695,14 +755,6 @@ if [ "$TEST_JACOB" = "1" ]; then
 
 EOF
     if [ "$CLONE_OK" = "1" ]; then
-        # ANSI colors for visual emphasis (degrade gracefully on non-ANSI
-        # terminals — the escape sequences just render as their literal
-        # bytes, which is rare and harmless).
-        ESC=$(printf '\033')
-        C_BOLD="${ESC}[1m"
-        C_CYAN="${ESC}[1;36m"
-        C_DIM="${ESC}[2m"
-        C_RESET="${ESC}[0m"
         cat <<EOF
 
  ${C_BOLD}Next step:${C_RESET} run this to launch the extras menu
@@ -726,29 +778,11 @@ EOF
     # both --auto-launch and the default-yes prompt path. The test
     # clone landed at /tmp/k2-test-...-extras/, so menu.sh's path-
     # based safeguard auto-detects extras-only mode just like a real
-    # extras install would.
+    # extras install would. (Test mode is always LOCAL_MODE=1 since
+    # PRINTER_IP is forced to localhost, so the helper's local-mode
+    # branch fires.)
     if [ "$CLONE_OK" = "1" ]; then
-        if [ "${AUTO_LAUNCH:-0}" = "1" ]; then
-            if (: < /dev/tty) 2>/dev/null; then
-                echo "I: --auto-launch — launching menu..."
-                exec sh -c "$LAUNCH_CMD"
-            else
-                echo "W: --auto-launch but stdin isn't a TTY — skipping"
-            fi
-        elif (: < /dev/tty) 2>/dev/null; then
-            echo ""
-            printf "Launch the menu now? [Y/n] "
-            read TEST_LAUNCH_CHOICE
-            case "$TEST_LAUNCH_CHOICE" in
-                n|N|no|NO)
-                    echo "I: ok — run the command above when ready"
-                    ;;
-                *)
-                    echo "I: launching menu..."
-                    exec sh -c "$LAUNCH_CMD"
-                    ;;
-            esac
-        fi
+        maybe_launch_menu
     fi
 
     exit 0
@@ -939,18 +973,10 @@ if [ "$EXTRAS_ONLY" = "0" ] && [ "$REPO_URL" = "$REPO_URL_1313" ]; then
     fi
 fi
 
-# ANSI color codes for visual emphasis on the launch command. Same
-# treatment as the --test-jacob summary so the next-step action is
-# unmistakable. Degrades gracefully on non-ANSI terminals (escapes
-# render as their literal bytes — rare and harmless).
-ESC=$(printf '\033')
-C_BOLD="${ESC}[1m"
-C_CYAN="${ESC}[1;36m"
-C_RESET="${ESC}[0m"
-
 # In local-mode the user is already on the printer, so the
 # `ssh root@host` line is just noise — they'd run the menu command
 # directly. Pick the right "how to launch" prose per mode.
+# (Color codes are defined at the top of the script.)
 if [ "${LOCAL_MODE:-0}" = "1" ]; then
     LAUNCH_INSTRUCTIONS=" Run this to start the menu:
 
@@ -1001,47 +1027,7 @@ ${LAUNCH_INSTRUCTIONS}
 EOF
 fi
 
-# Post-install menu launch:
-#
-#   --auto-launch passed: exec the menu unconditionally. In local-mode
-#                         the menu runs in the current shell; in
-#                         SSH-from-PC mode we open an SSH session with
-#                         -t (TTY allocated) so the menu is interactive.
-#   default (no flag):    only prompt in local-mode (where the launch
-#                         is a clean local exec). SSH-from-PC mode is
-#                         left alone — users typically prefer to SSH in
-#                         fresh themselves rather than nesting through
-#                         the bootstrap's SSH plumbing.
-#
-# Both paths skip if stdin isn't a TTY (avoid hanging non-interactive runs).
-if [ "${AUTO_LAUNCH:-0}" = "1" ]; then
-    if ! (: < /dev/tty) 2>/dev/null; then
-        echo "W: --auto-launch passed but stdin isn't a TTY — skipping (need interactive shell)"
-    elif [ "${LOCAL_MODE:-0}" = "1" ]; then
-        echo "I: --auto-launch — launching menu..."
-        exec sh -c "$LAUNCH_CMD"
-    else
-        echo "I: --auto-launch — opening menu over SSH (a TTY will be allocated)..."
-        # `-t` forces ssh to allocate a pseudo-terminal on the remote so
-        # the menu is interactive. exec replaces this process with the
-        # SSH session, so when the user exits the menu they return to
-        # their local shell.
-        exec $SSH -t "root@$PRINTER_IP" "$LAUNCH_CMD"
-    fi
-elif [ "${LOCAL_MODE:-0}" = "1" ] && (: < /dev/tty) 2>/dev/null; then
-    echo ""
-    printf "Launch the menu now? [Y/n] "
-    read LAUNCH_NOW_CHOICE
-    case "$LAUNCH_NOW_CHOICE" in
-        n|N|no|NO)
-            echo "I: ok — run the command above when ready"
-            ;;
-        *)
-            echo "I: launching menu..."
-            # exec replaces this bootstrap process with the menu, so when
-            # the user exits the menu they return to their shell, not
-            # back into a finished bootstrap script.
-            exec sh -c "$LAUNCH_CMD"
-            ;;
-    esac
-fi
+# Post-install: offer to launch the menu (or auto-launch with --auto-launch).
+# Logic lives in maybe_launch_menu() at the top of this script — same
+# behavior here and at the end of the --test-jacob summary.
+maybe_launch_menu
