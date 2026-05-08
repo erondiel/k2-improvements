@@ -109,10 +109,12 @@ The reduced menu hides Install-essentials, Features, and the firmware-flash item
 
 ### Power-user override flags
 
-Both skip the auto-detect prompt:
+All optional — defaults are correct for the common case.
 
-- `--extras-only` — force extras-only regardless of state
-- `--full` — force full install regardless of state (re-runs everything; idempotent)
+- `--extras-only` — force extras-only mode regardless of detected state
+- `--full` — force full install regardless of detected state (re-runs everything; idempotent)
+- `--auto-launch` — skip the post-install "Launch the menu now? [Y/n]" prompt and exec the menu directly. In local-mode the menu runs in the current shell; in SSH-from-PC mode bootstrap opens an SSH session with `-t` (TTY allocated) for the menu. Useful for one-shot install-and-go workflows.
+- `--test-jacob` — test mode: simulates a 1.1.3.13 + Jacob10383 install on any machine (forces local-mode, stages a fake Jacob install in `/tmp`, redirects clone to `/tmp/k2-test-...`, exits with a routing-decision summary). Skips destructive operations. Useful for verifying the auto-detect prompt and routing flow without real hardware. Composes with `--auto-launch` for full-flow smoke tests.
 
 ### Portable bug-fixes auto-applied to the 1.1.3.13 path
 
