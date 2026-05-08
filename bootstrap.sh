@@ -809,61 +809,39 @@ HAS_REAL_WGET=$(remote "/opt/bin/opkg list-installed 2>/dev/null | grep -qE '^wg
 if [ "$HAS_REAL_WGET" = "no" ]; then
     echo "I: installing wget (uses python shim for the bootstrap download, then opkg overwrites it)"
 
-    # Stage a Python-based wget shim locally — opkg uses wget internally to
-    # fetch packages. The real wget package then overwrites this shim.
+    # Stage the Python-based wget shim — opkg uses wget internally to
+    # fetch packages, so we need a wget binary at /opt/bin/wget before
+    # opkg can install the real wget package. The shim mimics enough of
+    # wget(1) for opkg's needs.
+    #
+    # Source preference: local file from the install tree first
+    # (works for git-clone install and self-heal'd /tmp install
+    # alike), GitHub raw URL second (curl-pipe install where the rest
+    # of the repo isn't available locally).
     SHIM_TMP=$(mktemp)
-    cat > "$SHIM_TMP" <<'WGET_SHIM_EOF'
-#!/usr/bin/env python3
-# Minimal wget shim — used only during Entware bootstrap. The real
-# wget package overwrites this file once `opkg install wget` runs.
-#
-# If the real wget install fails (transient opkg issue, network glitch),
-# this shim can stick around indefinitely as /opt/bin/wget. Without a
-# socket timeout, every subsequent invocation can hang forever on a
-# stalled TCP connection. Hence the explicit timeouts below — fail
-# loudly within ~30s instead of hanging silently.
-#
-# Supports `wget URL`, `wget -O FILE URL`, and `wget -qO- URL` (or any
-# combined-flag variant where -O is followed by the destination, with
-# `-` meaning stdout).
-import socket, sys, urllib.request
-
-# 30s connect timeout, applied globally to all socket connections made
-# by urllib. Stalled connections raise socket.timeout instead of hanging.
-socket.setdefaulttimeout(30)
-
-args = sys.argv[1:]
-url = None
-out = None
-while args:
-    a = args.pop(0)
-    if a == '-O':
-        out = args.pop(0) if args else None
-    elif a == '-qO-' or a == '-O-':
-        out = '-'
-    elif a.startswith('-O'):
-        # Combined form like -Ofoo (no space) — value is in same arg
-        out = a[2:]
-    elif a.startswith('-'):
-        # Other flags (-q, -nv, -c, etc.) — ignore quietly
-        pass
-    else:
-        url = a
-if not url:
-    print('wget-shim: no URL given', file=sys.stderr)
-    sys.exit(1)
-try:
-    if out and out != '-':
-        urllib.request.urlretrieve(url, out)
-    else:
-        sys.stdout.buffer.write(urllib.request.urlopen(url, timeout=30).read())
-except socket.timeout:
-    print(f'wget-shim: timeout connecting to {url}', file=sys.stderr)
-    sys.exit(1)
-except Exception as e:
-    print(f'wget-shim error: {e}', file=sys.stderr)
-    sys.exit(1)
-WGET_SHIM_EOF
+    SHIM_SRC=""
+    SHIM_REPO_PATH="installer/scripts/wget-shim.py"
+    SHIM_LOCAL_BASE=$(cd "$(dirname "$0")" 2>/dev/null && pwd)
+    if [ -n "${SHIM_LOCAL_BASE:-}" ] && [ -f "$SHIM_LOCAL_BASE/$SHIM_REPO_PATH" ]; then
+        SHIM_SRC="$SHIM_LOCAL_BASE/$SHIM_REPO_PATH"
+        cp "$SHIM_SRC" "$SHIM_TMP"
+    else
+        SHIM_URL="${WGET_SHIM_URL:-https://raw.githubusercontent.com/erondiel/k2-improvements/main/$SHIM_REPO_PATH}"
+        if command -v curl >/dev/null 2>&1 && \
+           curl -sSL --connect-timeout 30 --max-time 60 "$SHIM_URL" -o "$SHIM_TMP" 2>/dev/null && \
+           [ -s "$SHIM_TMP" ]; then
+            SHIM_SRC="(downloaded from $SHIM_URL)"
+        elif command -v wget >/dev/null 2>&1 && \
+             wget -q -T 30 -O "$SHIM_TMP" "$SHIM_URL" 2>/dev/null && \
+             [ -s "$SHIM_TMP" ]; then
+            SHIM_SRC="(downloaded from $SHIM_URL)"
+        else
+            echo "ERROR: couldn't stage wget-shim.py (neither local file nor download worked)"
+            rm -f "$SHIM_TMP"
+            exit 1
+        fi
+    fi
+    echo "I: staging wget shim from $SHIM_SRC"
 
     $SCP "$SHIM_TMP" "root@$PRINTER_IP:/opt/bin/wget" >/dev/null
     rm -f "$SHIM_TMP"
