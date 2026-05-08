@@ -1,0 +1,88 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  syntax:
+    name: Shell syntax (sh + dash)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: dash syntax check
+        run: |
+          # dash is the strictest POSIX-ish shell that's already on
+          # ubuntu-latest. If a script parses under both `sh -n` and
+          # `dash -n`, it'll parse on busybox ash too.
+          set -e
+          for f in bootstrap.sh installer/scripts/*.sh installer/menus/*.sh installer/extras/*/install.sh features/kamp-adaptive-purge/install.sh; do
+              if [ -f "$f" ]; then
+                  echo "checking $f"
+                  sh -n "$f"
+                  dash -n "$f"
+              fi
+          done
+
+      - name: Python syntax check
+        run: |
+          python3 -m py_compile installer/scripts/wget-shim.py
+
+  shellcheck:
+    name: shellcheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install shellcheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+
+      - name: Run shellcheck on bootstrap.sh
+        # bootstrap.sh has been hand-cleaned to 0 warnings. Treat new
+        # warnings as failures so regressions are caught at PR time.
+        run: shellcheck -s sh bootstrap.sh
+
+      - name: Run shellcheck on other shell scripts (advisory)
+        # The other scripts have ~50 warnings combined, mostly
+        # best-practice (SC3043 'local' undefined in POSIX, SC2155
+        # declare-and-assign separately, SC2046 unquoted command
+        # substitution). They're working in production. Show them but
+        # don't fail the build. Revisit if/when we choose to clean them up.
+        run: |
+          shellcheck -s sh installer/scripts/sshpass-expect.sh installer/menus/*.sh || true
+          echo "(non-blocking)"
+
+  test-jacob:
+    name: --test-jacob smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run bootstrap in test mode
+        # Exercises the full routing-decision flow without hitting any
+        # real printer: forces local-mode + 1.1.3.13 firmware + a fake
+        # Jacob10383 install staged in /tmp. Skips destructive ops.
+        # Non-TTY in CI, so --auto-launch correctly warns and skips.
+        # Confirms bootstrap parses + runs end-to-end and produces the
+        # expected summary lines.
+        run: |
+          set -e
+          BOOTSTRAP_REEXEC=1 sh bootstrap.sh --test-jacob --auto-launch <<EOF > /tmp/test-jacob.log 2>&1
+          y
+          EOF
+          # Expected signals in the summary
+          grep -q "Detected firmware:.*1.1.3.13 (forced)" /tmp/test-jacob.log
+          grep -q "EXTRAS_ONLY mode:.*1" /tmp/test-jacob.log
+          grep -q "Clone done:.*yes" /tmp/test-jacob.log
+          grep -q "auto-launch passed but stdin isn't a TTY" /tmp/test-jacob.log
+          echo "✓ all expected summary lines present"
+
+      - name: Upload log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-jacob-log
+          path: /tmp/test-jacob.log
