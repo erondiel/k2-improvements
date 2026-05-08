@@ -281,61 +281,66 @@ fi
 # package manager (opkg on K2 Plus / Entware, apt on Debian/Ubuntu/WSL,
 # brew on macOS, etc.). If we can't detect one, fall through to the
 # existing warning and proceed with prompts.
-maybe_install_sshpass() {
-    if command -v sshpass >/dev/null 2>&1; then
-        # If sshpass is already in PATH, check whether it's our expect-based
-        # wrapper. If so, refresh it from GitHub on every bootstrap run so
-        # users with stale wrappers from earlier versions pick up bug fixes
-        # without having to delete the old file manually.
-        local sshpass_path wrapper_marker wrapper_url dl_cmd
-        sshpass_path=$(command -v sshpass)
-        wrapper_marker="sshpass-equivalent using"   # comes from the wrapper's header comment
-        if [ -f "$sshpass_path" ] && grep -q "$wrapper_marker" "$sshpass_path" 2>/dev/null; then
-            wrapper_url="${SSHPASS_WRAPPER_URL:-https://raw.githubusercontent.com/erondiel/k2-improvements/main/installer/scripts/sshpass-expect.sh}"
-            if command -v curl >/dev/null 2>&1; then
-                dl_cmd="curl -sSL '$wrapper_url' -o '$sshpass_path'"
-            elif command -v wget >/dev/null 2>&1; then
-                dl_cmd="wget -q -O '$sshpass_path' '$wrapper_url'"
-            else
-                dl_cmd=""
-            fi
-            if [ -n "$dl_cmd" ]; then
-                if sh -c "$dl_cmd" 2>/dev/null && [ -s "$sshpass_path" ]; then
-                    chmod +x "$sshpass_path" 2>/dev/null
-                    echo "I: refreshed sshpass-expect wrapper at $sshpass_path (carries any fixes shipped since your previous install)"
-                fi
-            fi
-        fi
+# URL of the sshpass-expect wrapper on GitHub. Used by the wrapper-refresh
+# logic and the opkg+expect install fallback. Override via env var in tests.
+SSHPASS_WRAPPER_URL="${SSHPASS_WRAPPER_URL:-https://raw.githubusercontent.com/erondiel/k2-improvements/main/installer/scripts/sshpass-expect.sh}"
+
+# Pick a curl/wget download invocation, or empty string if neither is
+# present. Echoes the command (caller does sh -c on it).
+sshpass_dl_cmd() {
+    dest="$1"
+    url="$2"
+    if command -v curl >/dev/null 2>&1; then
+        echo "curl -sSL '$url' -o '$dest'"
+    elif command -v wget >/dev/null 2>&1; then
+        echo "wget -q -O '$dest' '$url'"
+    fi
+}
+
+# If sshpass is already at /opt/bin/sshpass and is OUR expect-based
+# wrapper (detected by a marker comment), refresh it from GitHub so
+# users with stale wrappers from earlier versions pick up bug fixes
+# without having to delete the old file manually. Real sshpass binaries
+# don't match the marker, so the refresh logic doesn't touch them.
+sshpass_refresh_wrapper_if_ours() {
+    local sshpass_path wrapper_marker dl_cmd
+    sshpass_path=$(command -v sshpass)
+    wrapper_marker="sshpass-equivalent using"   # from the wrapper's header comment
+    if [ ! -f "$sshpass_path" ]; then
         return 0
     fi
+    if ! grep -q "$wrapper_marker" "$sshpass_path" 2>/dev/null; then
+        return 0
+    fi
+    dl_cmd=$(sshpass_dl_cmd "$sshpass_path" "$SSHPASS_WRAPPER_URL")
+    [ -z "$dl_cmd" ] && return 0
+    if sh -c "$dl_cmd" 2>/dev/null && [ -s "$sshpass_path" ]; then
+        chmod +x "$sshpass_path" 2>/dev/null
+        echo "I: refreshed sshpass-expect wrapper at $sshpass_path (carries any fixes shipped since your previous install)"
+    fi
+}
 
-    local pm="" cmd=""
+# Detect host package manager + the install command for sshpass.
+# Echoes "<pm>|<install command>" or empty if no manager found.
+# opkg is special-cased: arm Entware feeds don't always ship sshpass, so
+# we fall back to installing expect and dropping our wrapper at
+# /opt/bin/sshpass.
+sshpass_detect_pkg_install() {
+    local pm="" cmd="" wrapper_dl
     if command -v opkg >/dev/null 2>&1 && [ -d /opt/etc ]; then
-        # opkg architectures vary in what they ship. The K2 Plus's
-        # armv7-3.2 feed does NOT have sshpass, but it does have expect,
-        # which we can wrap to act as a drop-in sshpass replacement.
-        # Other archs may have sshpass directly. Check the feed first.
         opkg update >/dev/null 2>&1 || true
         if opkg list 2>/dev/null | grep -q "^sshpass "; then
             pm="opkg"
             cmd="opkg install sshpass"
         elif opkg list 2>/dev/null | grep -q "^expect "; then
-            # Install expect + drop our sshpass-expect wrapper at /opt/bin/sshpass.
-            # K2 Plus stock has wget but not curl, so use whichever is available.
-            local wrapper_url="${SSHPASS_WRAPPER_URL:-https://raw.githubusercontent.com/erondiel/k2-improvements/main/installer/scripts/sshpass-expect.sh}"
-            local dl_cmd=""
-            if command -v curl >/dev/null 2>&1; then
-                dl_cmd="curl -sSL '$wrapper_url' -o /opt/bin/sshpass"
-            elif command -v wget >/dev/null 2>&1; then
-                dl_cmd="wget -q -O /opt/bin/sshpass '$wrapper_url'"
-            else
-                echo "I: neither curl nor wget found — skipping expect-based sshpass fallback"
+            wrapper_dl=$(sshpass_dl_cmd "/opt/bin/sshpass" "$SSHPASS_WRAPPER_URL")
+            if [ -z "$wrapper_dl" ]; then
+                echo "I: neither curl nor wget found — skipping expect-based sshpass fallback" >&2
                 return 1
             fi
             pm="opkg+expect (no native sshpass on this arch)"
-            cmd="opkg install expect && $dl_cmd && chmod +x /opt/bin/sshpass"
+            cmd="opkg install expect && $wrapper_dl && chmod +x /opt/bin/sshpass"
         fi
-        # else: neither sshpass nor expect available; fall through (no prompt)
     elif command -v apt-get >/dev/null 2>&1; then
         pm="apt"
         cmd="sudo apt-get update >/dev/null 2>&1 && sudo apt-get install -y sshpass"
@@ -352,10 +357,45 @@ maybe_install_sshpass() {
         pm="brew"
         cmd="brew install hudochenkov/sshpass/sshpass"
     fi
+    [ -z "$pm" ] && return 1
+    echo "${pm}|${cmd}"
+}
 
-    if [ -z "$pm" ]; then
+# Run an install command and verify sshpass landed in PATH afterwards.
+# Returns 0 on success, 1 on any failure path. Refreshes PATH to cover
+# common install locations (/opt/bin from opkg, /usr/local/bin from brew).
+sshpass_run_install() {
+    local cmd="$1"
+    echo "I: installing sshpass..."
+    if ! sh -c "$cmd"; then
+        echo "W: sshpass install failed — falling back to password prompts"
         return 1
     fi
+    export PATH="/opt/bin:/opt/sbin:/usr/local/bin:$PATH"
+    if command -v sshpass >/dev/null 2>&1; then
+        echo "I: sshpass installed successfully"
+        return 0
+    fi
+    echo "W: install command succeeded but sshpass not in PATH — falling back to password prompts"
+    return 1
+}
+
+# Top-level orchestrator: if sshpass is missing, prompt to install via the
+# host's package manager. Without sshpass, every SSH call in this
+# bootstrap fires its own password prompt — ~10 prompts per run, which is
+# annoying. Falls through (returns non-zero) if no package manager is
+# detected, the user declines, or the install fails. Caller treats the
+# return as advisory.
+maybe_install_sshpass() {
+    if command -v sshpass >/dev/null 2>&1; then
+        sshpass_refresh_wrapper_if_ours
+        return 0
+    fi
+
+    local pm_cmd pm cmd
+    pm_cmd=$(sshpass_detect_pkg_install) || return 1
+    pm="${pm_cmd%%|*}"
+    cmd="${pm_cmd#*|}"
 
     echo ""
     echo "I: sshpass is not installed."
@@ -372,22 +412,7 @@ maybe_install_sshpass() {
             ;;
     esac
 
-    echo "I: installing sshpass..."
-    if sh -c "$cmd"; then
-        # Refresh PATH in case sshpass landed in a dir not yet in PATH
-        # (e.g., /opt/bin from opkg, /home/linuxbrew/.linuxbrew/bin from brew).
-        export PATH="/opt/bin:/opt/sbin:/usr/local/bin:$PATH"
-        if command -v sshpass >/dev/null 2>&1; then
-            echo "I: sshpass installed successfully"
-            return 0
-        else
-            echo "W: install command succeeded but sshpass not in PATH — falling back to password prompts"
-            return 1
-        fi
-    else
-        echo "W: sshpass install failed — falling back to password prompts"
-        return 1
-    fi
+    sshpass_run_install "$cmd"
 }
 
 # Detect "running on the target" — when bootstrap is invoked on the
